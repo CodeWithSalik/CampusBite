@@ -5,12 +5,137 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CampusBite — Smart Canteen Ordering System</title>
   <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/student.css" />
 </head>
 <body>
-  <main id="app">
-    <h1>CampusBite</h1>
-    <p>Smart Canteen Ordering System</p>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="/index.html" class="brand-logo">
+        <span class="brand-icon">CB</span>
+        <span>Campus<span class="brand-accent">Bite</span></span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="/index.html" class="nav-link active">Home</a></li>
+        <li><a href="/menu.html" class="nav-link">Menu Catalogue</a></li>
+        <li><a href="/orders.html" class="nav-link">My Orders</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="/cart.html" class="cart-nav-btn">
+          <span>🛒</span>
+          <span>Cart</span>
+          <span class="cart-counter" style="display:none;">0</span>
+        </a>
+
+        <div id="nav-user-area" style="display:flex; align-items:center; gap:0.5rem;">
+          <a href="/login.html" class="btn btn-outline btn-sm">Login</a>
+          <a href="/register.html" class="btn btn-primary btn-sm">Sign Up</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container hero-content">
+      <span class="hero-tag">⚡ CSE326 Smart Campus Canteen</span>
+      <h1 class="hero-title">Skip The Queue, <br /><span class="brand-accent">Bite Into Good Food</span></h1>
+      <p class="hero-subtitle">Order fresh burgers, pizzas, wholesome Indian meals, and beverages directly from your desk or classroom. No more waiting at the canteen counter.</p>
+
+      <div class="hero-search-wrapper">
+        <input type="text" id="food-search-input" placeholder="Search delicious food (e.g. burger, biryani, cold coffee)..." />
+        <button id="food-search-btn" class="search-btn">Search Food</button>
+      </div>
+
+      <!-- Categories Bar -->
+      <div id="category-bar" class="category-bar"></div>
+    </div>
+  </section>
+
+  <!-- Main Content: Featured & Menu Section -->
+  <main class="container" style="padding-top:2rem;">
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:1.5rem;">
+      <div>
+        <h2 style="font-size:1.85rem;">Campus Specialities</h2>
+        <p class="text-muted">Freshly prepared, student-friendly prices in INR (₹).</p>
+      </div>
+      <a href="/menu.html" class="btn btn-secondary btn-sm">Browse Full Catalogue ➔</a>
+    </div>
+
+    <!-- Food Grid -->
+    <div id="food-grid" class="food-grid"></div>
+
+    <!-- Special Offers Section -->
+    <section class="card" style="margin:4rem 0 2rem; background:linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); border-color:#fed7aa; padding:2.5rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.5rem;">
+        <div style="max-width:600px;">
+          <span class="badge badge-warning" style="margin-bottom:0.75rem;">🎉 Student Combo Special</span>
+          <h2 style="font-size:1.75rem; margin-bottom:0.5rem;">Mid-Semester Study Feast</h2>
+          <p style="color:var(--color-text-muted);">Get a Paneer Makhani Burger, Peri-Peri Fries, and Thick Cold Coffee combo at ₹249 only (Save ₹44!). Available between 2 PM to 6 PM.</p>
+        </div>
+        <a href="/menu.html" class="btn btn-primary btn-lg">Order Combo Now</a>
+      </div>
+    </section>
   </main>
-  <script src="/js/app.js"></script>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-col">
+          <div class="brand-logo" style="margin-bottom:1rem;">
+            <span class="brand-icon">CB</span>
+            <span>Campus<span class="brand-accent">Bite</span></span>
+          </div>
+          <p style="color:var(--color-text-muted); font-size:0.9rem; line-height:1.6;">
+            A premier Smart Canteen Ordering System designed for university students and faculty. Experience queue-free dining today.
+          </p>
+        </div>
+        <div class="footer-col">
+          <h4>Navigation</h4>
+          <ul class="footer-links">
+            <li><a href="/index.html">Home</a></li>
+            <li><a href="/menu.html">Full Menu</a></li>
+            <li><a href="/cart.html">View Cart</a></li>
+            <li><a href="/orders.html">Order History</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Canteen Hours</h4>
+          <ul class="footer-links" style="font-size:0.88rem; color:var(--color-text-muted);">
+            <li>Mon - Fri: 8:00 AM - 9:00 PM</li>
+            <li>Saturday: 9:00 AM - 7:00 PM</li>
+            <li>Sunday: 10:00 AM - 4:00 PM</li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Admin Portal</h4>
+          <p style="font-size:0.88rem; color:var(--color-text-muted); margin-bottom:0.75rem;">Staff & canteen administrators portal:</p>
+          <a href="/admin.html" class="btn btn-secondary btn-sm">Open Admin Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div>&copy; 2026 CampusBite • CSE326 Academic Project • All rights reserved.</div>
+        <div style="display:flex; gap:1.5rem;">
+          <span class="badge badge-success">● Canteen Open</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="/js/config.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/cart.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/menu.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      Menu.init();
+    });
+  </script>
 </body>
 </html>

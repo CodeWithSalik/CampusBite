@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Cart — CampusBite</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/student.css" />
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="/index.html" class="brand-logo">
+        <span class="brand-icon">CB</span>
+        <span>Campus<span class="brand-accent">Bite</span></span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="/index.html" class="nav-link">Home</a></li>
+        <li><a href="/menu.html" class="nav-link">Menu Catalogue</a></li>
+        <li><a href="/orders.html" class="nav-link">My Orders</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="/cart.html" class="cart-nav-btn" style="border-color:var(--color-primary); color:var(--color-primary);">
+          <span>🛒</span>
+          <span>Cart</span>
+          <span class="cart-counter" style="display:none;">0</span>
+        </a>
+
+        <div id="nav-user-area" style="display:flex; align-items:center; gap:0.5rem;">
+          <a href="/login.html" class="btn btn-outline btn-sm">Login</a>
+          <a href="/register.html" class="btn btn-primary btn-sm">Sign Up</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 2.5rem 1.5rem;">
+    <h1 style="font-size:2.25rem; margin-bottom:0.35rem;">Review Your Cart</h1>
+    <p class="text-muted">Confirm your delicious selections before heading to the campus counter.</p>
+
+    <!-- Empty State -->
+    <div id="cart-empty-state" class="empty-state" style="display:none; max-width:600px; margin:3rem auto;">
+      <div class="empty-state-icon">🛒</div>
+      <h3>Your food cart is empty!</h3>
+      <p>Hungry? Browse through our freshly prepared canteen menu and add items to your cart.</p>
+      <a href="/menu.html" class="btn btn-primary btn-lg">Browse Menu Now ➔</a>
+    </div>
+
+    <!-- Active Cart Layout -->
+    <div id="cart-active-layout" class="cart-layout" style="display:none;">
+      <!-- Items Table Card -->
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table class="cart-table">
+          <thead>
+            <tr>
+              <th>Food Item</th>
+              <th>Price</th>
+              <th style="text-align:center;">Quantity</th>
+              <th style="text-align:right;">Total</th>
+              <th style="text-align:center;">Remove</th>
+            </tr>
+          </thead>
+          <tbody id="cart-table-body">
+            <!-- Dynamic Cart Items -->
+          </tbody>
+        </table>
+        <div style="padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; background:var(--color-surface-alt); border-top:1px solid var(--color-border-light);">
+          <a href="/menu.html" class="btn btn-secondary btn-sm">← Add More Items</a>
+          <button id="clear-cart-btn" class="btn btn-outline btn-sm" style="color:var(--color-danger); border-color:var(--color-danger);">Empty Cart</button>
+        </div>
+      </div>
+
+      <!-- Summary Card -->
+      <div class="order-summary-card">
+        <h3 style="font-size:1.35rem; margin-bottom:1.25rem;">Bill Details</h3>
+
+        <div class="summary-row">
+          <span>Item Subtotal</span>
+          <span id="cart-subtotal" style="font-weight:600;">₹0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>GST (5%)</span>
+          <span id="cart-tax" style="font-weight:600;">₹0.00</span>
+        </div>
+        <div class="summary-row">
+          <span>Campus Convenience Fee</span>
+          <span id="cart-fee" style="font-weight:600;">₹10.00</span>
+        </div>
+
+        <div class="summary-row total-row">
+          <span>To Pay</span>
+          <span id="cart-total" style="color:var(--color-primary);">₹0.00</span>
+        </div>
+
+        <a href="/checkout.html" class="btn btn-primary btn-lg btn-full" style="margin-top:1.5rem;">
+          Proceed to Checkout ➔
+        </a>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/cart.js"></script>
+  <script src="/js/auth.js"></script>
+  <script>
+    function renderCartPage() {
+      const items = Cart.getItems();
+      const emptyState = document.getElementById('cart-empty-state');
+      const activeLayout = document.getElementById('cart-active-layout');
+      const tbody = document.getElementById('cart-table-body');
+
+      if (!items || items.length === 0) {
+        emptyState.style.display = 'block';
+        activeLayout.style.display = 'none';
+        return;
+      }
+
+      emptyState.style.display = 'none';
+      activeLayout.style.display = 'grid';
+
+      tbody.innerHTML = items.map(item => `
+        <tr>
+          <td>
+            <div class="cart-item-info">
+              <img src="${Utils.escapeHTML(item.image)}" 
+                   alt="${Utils.escapeHTML(item.name)}" 
+                   class="cart-item-img"
+                   onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=120&q=80';">
+              <div>
+                <div style="font-weight:700; font-size:1rem;">${Utils.escapeHTML(item.name)}</div>
+                <div style="font-size:0.8rem; color:var(--color-text-muted);">${Utils.escapeHTML(item.category)}</div>
+              </div>
+            </div>
+          </td>
+          <td style="font-weight:600;">${Utils.formatCurrency(item.price)}</td>
+          <td style="text-align:center;">
+            <div class="qty-control">
+              <button class="qty-btn" onclick="updateQty('${item._id}', -1)" aria-label="Decrease quantity">−</button>
+              <span class="qty-value">${item.quantity}</span>
+              <button class="qty-btn" onclick="updateQty('${item._id}', 1)" aria-label="Increase quantity">+</button>
+            </div>
+          </td>
+          <td style="text-align:right; font-weight:700;">${Utils.formatCurrency(item.price * item.quantity)}</td>
+          <td style="text-align:center;">
+            <button onclick="removeCartItem('${item._id}')" class="btn btn-sm" style="color:var(--color-danger); background:none; border:none; cursor:pointer;" title="Remove Item">
+              🗑️
+            </button>
+          </td>
+        </tr>
+      `).join('');
+
+      document.getElementById('cart-subtotal').textContent = Utils.formatCurrency(Cart.getSubtotal());
+      document.getElementById('cart-tax').textContent = Utils.formatCurrency(Cart.getTax());
+      document.getElementById('cart-fee').textContent = Utils.formatCurrency(Cart.getConvenienceFee());
+      document.getElementById('cart-total').textContent = Utils.formatCurrency(Cart.getTotal());
+    }
+
+    function updateQty(id, change) {
+      Cart.updateQuantity(id, change);
+      renderCartPage();
+    }
+
+    function removeCartItem(id) {
+      Cart.removeItem(id);
+      renderCartPage();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      Cart.init();
+      renderCartPage();
+
+      document.getElementById('clear-cart-btn')?.addEventListener('click', () => {
+        if (confirm('Are you sure you want to empty your cart?')) {
+          Cart.clear();
+          renderCartPage();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

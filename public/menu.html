@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Menu Catalogue — CampusBite</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/student.css" />
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="/index.html" class="brand-logo">
+        <span class="brand-icon">CB</span>
+        <span>Campus<span class="brand-accent">Bite</span></span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="/index.html" class="nav-link">Home</a></li>
+        <li><a href="/menu.html" class="nav-link active">Menu Catalogue</a></li>
+        <li><a href="/orders.html" class="nav-link">My Orders</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="/cart.html" class="cart-nav-btn">
+          <span>🛒</span>
+          <span>Cart</span>
+          <span class="cart-counter" style="display:none;">0</span>
+        </a>
+
+        <div id="nav-user-area" style="display:flex; align-items:center; gap:0.5rem;">
+          <a href="/login.html" class="btn btn-outline btn-sm">Login</a>
+          <a href="/register.html" class="btn btn-primary btn-sm">Sign Up</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container" style="padding: 2.5rem 1.5rem;">
+    <!-- Page Header & Search -->
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1.5rem; margin-bottom:2rem;">
+      <div>
+        <h1 style="font-size:2.25rem; margin-bottom:0.35rem;">Canteen Menu Catalogue</h1>
+        <p class="text-muted">Fresh meals, snacks, and refreshing drinks prepared on order.</p>
+      </div>
+
+      <div class="hero-search-wrapper" style="width:100%; max-width:420px; box-shadow:var(--shadow-sm); margin:0;">
+        <input type="text" id="food-search-input" placeholder="Search by food name or category..." />
+        <button id="food-search-btn" class="search-btn" style="padding:0.6rem 1.25rem;">Search</button>
+      </div>
+    </div>
+
+    <!-- Category Filter Bar -->
+    <div id="category-bar" class="category-bar" style="margin: 1rem 0 2rem; justify-content:flex-start;"></div>
+
+    <!-- Food Grid -->
+    <div id="food-grid" class="food-grid"></div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container footer-bottom">
+      <div>&copy; 2026 CampusBite • CSE326 Academic Project • All prices in INR (₹).</div>
+      <a href="/admin.html" style="color:var(--color-text-muted); font-size:0.85rem;">Admin Portal</a>
+    </div>
+  </footer>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/cart.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/menu.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      Menu.init();
+    });
+  </script>
+</body>
+</html>
