@@ -1,7 +1,31 @@
 'use strict';
 
 const { ObjectId } = require('mongodb');
-const { getDB, isConnected, COLLECTIONS } = require('../config/database');
+const { connectDB, getDB, isConnected, COLLECTIONS } = require('../config/database');
+
+async function resolveDB() {
+  if (isConnected()) {
+    return getDB();
+  }
+  if (process.env.MONGODB_URI) {
+    try {
+      return await connectDB();
+    } catch (err) {
+      console.error('[Order Service Diagnostic] Database connection unavailable during order operation:', err.message);
+      const dbErr = new Error('Database service is temporarily unavailable. Please try again shortly.');
+      dbErr.statusCode = 503;
+      dbErr.code = 'DATABASE_UNAVAILABLE';
+      throw dbErr;
+    }
+  }
+  if (process.env.NODE_ENV === 'production') {
+    const err = new Error('Database service is temporarily unavailable. Please try again shortly.');
+    err.statusCode = 503;
+    err.code = 'DATABASE_UNAVAILABLE';
+    throw err;
+  }
+  return null;
+}
 const {
   ORDER_STATUS,
   PAYMENT_STATUS,
@@ -146,8 +170,8 @@ const orderService = {
     }
 
     // ─── 7. Persistence (MongoDB or In-Memory) ─────────────────────
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       const result = await db.collection(COLLECTIONS.ORDERS).insertOne(orderDoc);
       orderDoc._id = result.insertedId;
     } else {
@@ -170,8 +194,8 @@ const orderService = {
   async findOrderByIdempotencyKey(userId, idempotencyKey) {
     if (!idempotencyKey) return null;
 
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS).findOne({
         userId: String(userId),
         idempotencyKey: String(idempotencyKey)
@@ -187,8 +211,8 @@ const orderService = {
    * Count active kitchen orders ('Placed' or 'Preparing')
    */
   async countActiveKitchenOrders() {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS).countDocuments({
         status: { $in: [ORDER_STATUS.PLACED, ORDER_STATUS.PREPARING] }
       });
@@ -205,8 +229,8 @@ const orderService = {
       const candidate = `CB-${randomNum}`;
 
       let exists = false;
-      if (isConnected()) {
-        const db = getDB();
+      const db = await resolveDB();
+    if (db) {
         const found = await db.collection(COLLECTIONS.ORDERS).findOne({ orderNumber: candidate });
         if (found) exists = true;
       } else {
@@ -223,8 +247,8 @@ const orderService = {
    */
   async getOrderByNumber(orderNumber, requestingUser) {
     let order = null;
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       order = await db.collection(COLLECTIONS.ORDERS).findOne({ orderNumber });
     } else {
       order = inMemoryOrders.find(o => o.orderNumber === orderNumber) || null;
@@ -251,8 +275,8 @@ const orderService = {
    */
   async getOrderById(id, requestingUser) {
     let order = null;
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       const query = typeof id === 'string' && ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { _id: id };
       order = await db.collection(COLLECTIONS.ORDERS).findOne(query);
     } else {
@@ -279,8 +303,8 @@ const orderService = {
    * Get all orders for current authenticated student
    */
   async getOrdersByUser(userId) {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS)
         .find({ userId: String(userId) })
         .sort({ createdAt: -1 })
@@ -324,8 +348,8 @@ const orderService = {
       updatedAt: new Date()
     };
 
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS).findOneAndUpdate(
         { _id: order._id },
         { $set: update },
@@ -342,8 +366,8 @@ const orderService = {
    * Admin: Get all orders with filtering, searching, and sorting
    */
   async getAllOrders({ status, search, dateFrom, dateTo } = {}) {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       const query = {};
 
       if (status && status !== 'all') {
@@ -408,8 +432,8 @@ const orderService = {
     }
 
     let order = null;
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       const query = typeof idOrNumber === 'string' && idOrNumber.startsWith('CB-')
         ? { orderNumber: idOrNumber }
         : { _id: typeof idOrNumber === 'string' && ObjectId.isValid(idOrNumber) ? new ObjectId(idOrNumber) : idOrNumber };
@@ -448,8 +472,7 @@ const orderService = {
       update.paymentStatus = PAYMENT_STATUS.PAID;
     }
 
-    if (isConnected()) {
-      const db = getDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS).findOneAndUpdate(
         { _id: order._id },
         { $set: update },
@@ -474,8 +497,8 @@ const orderService = {
     }
 
     let order = null;
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+    if (db) {
       const query = typeof idOrNumber === 'string' && idOrNumber.startsWith('CB-')
         ? { orderNumber: idOrNumber }
         : { _id: typeof idOrNumber === 'string' && ObjectId.isValid(idOrNumber) ? new ObjectId(idOrNumber) : idOrNumber };
@@ -497,8 +520,7 @@ const orderService = {
       updatedAt: new Date()
     };
 
-    if (isConnected()) {
-      const db = getDB();
+    if (db) {
       return db.collection(COLLECTIONS.ORDERS).findOneAndUpdate(
         { _id: order._id },
         { $set: update },

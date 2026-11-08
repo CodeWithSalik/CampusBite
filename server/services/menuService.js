@@ -1,17 +1,48 @@
 'use strict';
 
 const { ObjectId } = require('mongodb');
-const { getDB, isConnected, COLLECTIONS } = require('../config/database');
+const { connectDB, getDB, isConnected, COLLECTIONS } = require('../config/database');
 const { validateMenuItemDocument } = require('../utils/dbValidators');
 const { inMemoryMenuItems } = require('../config/mockStore');
+
+/**
+ * Helper to ensure a live database connection or throw a 503 error in production.
+ */
+async function resolveDB() {
+  if (isConnected()) {
+    return getDB();
+  }
+
+  if (process.env.MONGODB_URI) {
+    try {
+      return await connectDB();
+    } catch (err) {
+      console.error('[Menu Service Diagnostic] Database connection unavailable during menu operation:', err.message);
+      const dbErr = new Error('Database service is temporarily unavailable. Please try again shortly.');
+      dbErr.statusCode = 503;
+      dbErr.code = 'DATABASE_UNAVAILABLE';
+      throw dbErr;
+    }
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    const err = new Error('Database service is temporarily unavailable. Please try again shortly.');
+    err.statusCode = 503;
+    err.code = 'DATABASE_UNAVAILABLE';
+    throw err;
+  }
+
+  return null;
+}
 
 const menuService = {
   /**
    * Get all menu items with optional category and availability filter
    */
   async getAllItems(filter = {}) {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+
+    if (db) {
       const query = {};
       if (filter.category && filter.category !== 'all') {
         query.category = filter.category;
@@ -25,7 +56,7 @@ const menuService = {
         .toArray();
     }
 
-    // In-memory fallback
+    // In-memory fallback (local standalone mock mode only)
     let items = [...inMemoryMenuItems];
     if (filter.category && filter.category !== 'all') {
       items = items.filter(i => i.category === filter.category);
@@ -40,8 +71,9 @@ const menuService = {
    * Get a single menu item by ID
    */
   async getItemById(id) {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+
+    if (db) {
       const query = typeof id === 'string' && ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { _id: id };
       return db.collection(COLLECTIONS.MENU_ITEMS).findOne(query);
     }
@@ -59,7 +91,7 @@ const menuService = {
       description: itemData.description ? itemData.description.trim() : '',
       price: Number(itemData.price),
       category: itemData.category,
-      image: itemData.image || '',
+      image: itemData.image || itemData.imageUrl || '',
       isAvailable: typeof itemData.isAvailable === 'boolean' ? itemData.isAvailable : true,
       preparationTime: Number(itemData.preparationTime) || 10,
       createdAt: new Date(),
@@ -73,8 +105,9 @@ const menuService = {
       throw err;
     }
 
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+
+    if (db) {
       const result = await db.collection(COLLECTIONS.MENU_ITEMS).insertOne(doc);
       return { _id: result.insertedId, ...doc };
     }
@@ -96,8 +129,9 @@ const menuService = {
     if (updateFields.price) updateFields.price = Number(updateFields.price);
     if (updateFields.preparationTime) updateFields.preparationTime = Number(updateFields.preparationTime);
 
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+
+    if (db) {
       const query = typeof id === 'string' && ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { _id: id };
       return db.collection(COLLECTIONS.MENU_ITEMS).findOneAndUpdate(
         query,
@@ -123,8 +157,9 @@ const menuService = {
    * Delete a menu item
    */
   async deleteItem(id) {
-    if (isConnected()) {
-      const db = getDB();
+    const db = await resolveDB();
+
+    if (db) {
       const query = typeof id === 'string' && ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { _id: id };
       const result = await db.collection(COLLECTIONS.MENU_ITEMS).deleteOne(query);
       return result.deletedCount > 0;

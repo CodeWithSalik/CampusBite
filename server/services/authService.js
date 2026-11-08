@@ -3,6 +3,7 @@
 const bcrypt = require('bcryptjs');
 const userService = require('./userService');
 const { validateEmail, normalizeEmail } = require('../utils/dbValidators');
+const { isConnected } = require('../config/database');
 
 const SALT_ROUNDS = 10;
 
@@ -59,6 +60,7 @@ const authService = {
 
   /**
    * Verify credentials and return sanitized user profile.
+   * Emits safe diagnostics for production troubleshooting without exposing sensitive values.
    */
   async verifyCredentials(email, password) {
     if (!email || !password) {
@@ -68,7 +70,13 @@ const authService = {
     }
 
     const normalized = normalizeEmail(email);
+
+    console.log('[Auth Diagnostic] Verifying credentials for authentication attempt.');
     const user = await userService.findByEmail(normalized);
+
+    const dbConnected = isConnected();
+    console.log(`[Auth Diagnostic] User lookup reached MongoDB: ${dbConnected}`);
+    console.log(`[Auth Diagnostic] Account found: ${Boolean(user)}`);
 
     // Generic error message to prevent account enumeration
     if (!user || !user.passwordHash) {
@@ -78,6 +86,8 @@ const authService = {
     }
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
+    console.log(`[Auth Diagnostic] Password comparison result: ${isMatch}`);
+
     if (!isMatch) {
       const err = new Error('Invalid email or password.');
       err.statusCode = 401;
