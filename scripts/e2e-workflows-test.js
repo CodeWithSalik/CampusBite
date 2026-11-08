@@ -76,6 +76,20 @@ async function runE2E() {
   let allPassed = true;
 
   try {
+    // Pre-test cleanup of previous E2E test users
+    try {
+      const { connectDB, COLLECTIONS } = require('../server/config/database');
+      if (process.env.MONGODB_URI) {
+        const db = await connectDB();
+        await db.collection(COLLECTIONS.USERS).deleteMany({
+          email: { $in: ['rohan.sharma@campusbite.edu', 'sneha.roy@campusbite.edu', 'chef.supervisor@campusbite.edu'] }
+        });
+        await db.collection(COLLECTIONS.ORDERS).deleteMany({
+          customerEmail: { $in: ['rohan.sharma@campusbite.edu', 'sneha.roy@campusbite.edu'] }
+        });
+      }
+    } catch (_) {}
+
     // ─── WORKFLOW 1: Student Order Journey ────────────────────────────
     console.log('--- WORKFLOW 1: Student Order Journey ---');
     // 1. Register & Login student
@@ -126,14 +140,17 @@ async function runE2E() {
 
     // ─── WORKFLOW 3: Administrator Status Lifecycle ───────────────────
     console.log('\n--- WORKFLOW 3: Administrator Status Lifecycle ---');
-    // Create admin user
-    const adminHash = await bcrypt.hash('ChefPassword123!', 10);
-    await userService.createUser({
-      name: 'Chef Supervisor',
-      email: 'chef.supervisor@campusbite.edu',
-      passwordHash: adminHash,
-      role: 'admin'
-    });
+    // Ensure admin user exists
+    const existingAdmin = await userService.findByEmail('chef.supervisor@campusbite.edu');
+    if (!existingAdmin) {
+      const adminHash = await bcrypt.hash('ChefPassword123!', 10);
+      await userService.createUser({
+        name: 'Chef Supervisor',
+        email: 'chef.supervisor@campusbite.edu',
+        passwordHash: adminHash,
+        role: 'admin'
+      });
+    }
     const adminLoginRes = await makeRequest('POST', '/api/auth/login', {
       email: 'chef.supervisor@campusbite.edu',
       password: 'ChefPassword123!'
@@ -211,17 +228,22 @@ async function runE2E() {
 
     // ─── WORKFLOW 7: Price Manipulation Tampering Prevention ──────────
     console.log('\n--- WORKFLOW 7: Price Tampering Prevention ---');
-    // Sneha attempts to buy ₹189 pizza for ₹1.00
+    // Sneha attempts to buy item for fake price ₹1.00
+    const targetItem = menuItems.find(i => i.name.includes('Pizza')) || menuItems[0];
     const tamperRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: menuItems[2]._id, quantity: 1, price: 1.00 }],
+      items: [{ menuItemId: targetItem._id, quantity: 1, price: 1.00 }],
       totalAmount: 1.00
     }, {}, snehaCookie);
 
     const tamperedOrder = tamperRes.json?.order;
-    // Expected: Pizza price ₹189. Subtotal: ₹189. GST (5%): ₹9.45. Fee: ₹10. Total: ₹208.45
+    const expectedSubtotal = Number(targetItem.price);
+    const expectedTax = Math.round(expectedSubtotal * 0.05 * 100) / 100;
+    const expectedTotal = Math.round((expectedSubtotal + expectedTax + 10) * 100) / 100;
+
     const wf7Ok = tamperRes.statusCode === 201 &&
-      tamperedOrder.subtotal === 189 &&
-      tamperedOrder.totalAmount === 208.45;
+      tamperedOrder &&
+      tamperedOrder.subtotal === expectedSubtotal &&
+      tamperedOrder.totalAmount === expectedTotal;
 
     console.log(wf7Ok ? `✅ PASS: Workflow 7 — Tampered price ₹1 rejected, genuine total ₹${tamperedOrder?.totalAmount} enforced` : '❌ FAIL: Workflow 7');
     if (!wf7Ok) allPassed = false;
@@ -251,6 +273,19 @@ async function runE2E() {
     console.error('Fatal E2E test failure:', err);
     allPassed = false;
   } finally {
+    try {
+      const { isConnected, getDB, COLLECTIONS } = require('../server/config/database');
+      if (isConnected()) {
+        const db = getDB();
+        await db.collection(COLLECTIONS.USERS).deleteMany({
+          email: { $in: ['rohan.sharma@campusbite.edu', 'sneha.roy@campusbite.edu', 'chef.supervisor@campusbite.edu'] }
+        });
+        await db.collection(COLLECTIONS.ORDERS).deleteMany({
+          customerEmail: { $in: ['rohan.sharma@campusbite.edu', 'sneha.roy@campusbite.edu'] }
+        });
+      }
+    } catch (_) {}
+
     server.close(() => {
       console.log('\n======================================================');
       console.log(allPassed ? 'ALL 8 END-TO-END WORKFLOWS PASSED PERFECTLY!' : 'SOME WORKFLOWS FAILED');

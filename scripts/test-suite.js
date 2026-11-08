@@ -138,6 +138,26 @@ async function runTests() {
   let otherStudentCookie = null;
   let adminCookie = null;
 
+  // Pre-test DB cleanup for idempotent test runs
+  try {
+    const { connectDB, COLLECTIONS } = require('../server/config/database');
+    if (process.env.MONGODB_URI) {
+      const db = await connectDB();
+      await db.collection(COLLECTIONS.USERS).deleteMany({
+        email: { $in: ['aarav.patel@campusbite.edu', 'diya.sharma@campusbite.edu', 'canteen.admin@campusbite.edu'] }
+      });
+      await db.collection(COLLECTIONS.ORDERS).deleteMany({
+        customerEmail: { $in: ['aarav.patel@campusbite.edu', 'diya.sharma@campusbite.edu', 'canteen.admin@campusbite.edu'] }
+      });
+    }
+  } catch (_) {}
+
+  // Fetch active menu items for test fixtures
+  const menuService = require('../server/services/menuService');
+  const allMenuItems = await menuService.getAllItems();
+  const primaryItem = allMenuItems.find(i => i.name.includes('Paneer')) || allMenuItems[0] || inMemoryMenuItems[0];
+  const secondaryItem = allMenuItems.find(i => String(i._id) !== String(primaryItem._id)) || allMenuItems[1] || inMemoryMenuItems[1];
+
   try {
     // Register Student A
     const regRes = await makeRequest('POST', '/api/auth/register', {
@@ -172,13 +192,16 @@ async function runTests() {
     // Create and login Administrator (simulating setup-admin.js)
     const bcrypt = require('bcryptjs');
     const userService = require('../server/services/userService');
-    const adminHash = await bcrypt.hash('AdminPassword123!', 10);
-    await userService.createUser({
-      name: 'Head Chef Administrator',
-      email: 'canteen.admin@campusbite.edu',
-      passwordHash: adminHash,
-      role: 'admin'
-    });
+    const existingAdmin = await userService.findByEmail('canteen.admin@campusbite.edu');
+    if (!existingAdmin) {
+      const adminHash = await bcrypt.hash('AdminPassword123!', 10);
+      await userService.createUser({
+        name: 'Head Chef Administrator',
+        email: 'canteen.admin@campusbite.edu',
+        passwordHash: adminHash,
+        role: 'admin'
+      });
+    }
     const adminLogin = await makeRequest('POST', '/api/auth/login', {
       email: 'canteen.admin@campusbite.edu',
       password: 'AdminPassword123!'
@@ -196,7 +219,7 @@ async function runTests() {
   try {
     // 5.1 Unauthenticated order placement must be rejected (401)
     const unauthOrder = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 1 }]
+      items: [{ menuItemId: primaryItem._id, quantity: 1 }]
     });
     recordTest('Order Creation: Unauthenticated request rejected (401)', 'ORDER_ENGINE', unauthOrder.statusCode === 401, `Status ${unauthOrder.statusCode}`);
 
@@ -207,29 +230,46 @@ async function runTests() {
     recordTest('Order Creation: Non-existent item ID rejected (400)', 'ORDER_ENGINE', invalidItemRes.statusCode === 400, `Status ${invalidItemRes.statusCode}`);
 
     // 5.3 Unavailable/Sold out item must be rejected (400)
-    // inMemoryMenuItems[5] is Mumbai Samosa Pav Duo (isAvailable: false)
+    let unavailableItem = allMenuItems.find(i => i.isAvailable === false);
+    let tempToggled = false;
+    if (!unavailableItem && allMenuItems.length > 2) {
+      unavailableItem = allMenuItems[allMenuItems.length - 1];
+      await menuService.toggleAvailability(unavailableItem._id, false);
+      tempToggled = true;
+    } else if (!unavailableItem) {
+      unavailableItem = inMemoryMenuItems[5];
+    }
+
     const unavailableRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[5]._id, quantity: 1 }]
+      items: [{ menuItemId: unavailableItem._id, quantity: 1 }]
     }, {}, studentCookie);
     recordTest('Order Creation: Unavailable/Sold out item rejected (400)', 'ORDER_ENGINE', unavailableRes.statusCode === 400, `Status ${unavailableRes.statusCode}`);
 
+    if (tempToggled && unavailableItem) {
+      await menuService.toggleAvailability(unavailableItem._id, true);
+    }
+
     // 5.4 Invalid quantity: negative, 0, or > 20
     const invalidQtyRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 0 }]
+      items: [{ menuItemId: primaryItem._id, quantity: 0 }]
     }, {}, studentCookie);
     recordTest('Order Creation: Quantity < 1 rejected (400)', 'ORDER_ENGINE', invalidQtyRes.statusCode === 400, `Status ${invalidQtyRes.statusCode}`);
 
     const excessiveQtyRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 50 }]
+      items: [{ menuItemId: primaryItem._id, quantity: 50 }]
     }, {}, studentCookie);
     recordTest('Order Creation: Excessive quantity > 20 rejected (400)', 'ORDER_ENGINE', excessiveQtyRes.statusCode === 400, `Status ${excessiveQtyRes.statusCode}`);
 
     // 5.5 Price manipulation attack: client passes fake cheap price
     // Server must IGNORE client-submitted price and calculate exact price from DB
-    // Item 0: Paneer Burger = ₹129. Qty: 2 = ₹258.
-    // 5% GST on 258 = ₹12.90. Campus Fee = ₹10. Total = ₹280.90.
+    const itemUnitPrice = Number(primaryItem.price);
+    const expectedSubtotal = itemUnitPrice * 2;
+    const expectedTax = Math.round(expectedSubtotal * 0.05 * 100) / 100;
+    const expectedFee = 10;
+    const expectedTotal = Math.round((expectedSubtotal + expectedTax + expectedFee) * 100) / 100;
+
     const priceAttackRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 2, price: 1.00 }], // malicious manipulated price
+      items: [{ menuItemId: primaryItem._id, quantity: 2, price: 1.00 }], // malicious manipulated price
       clientTotal: 5.00,
       paymentMethod: 'Cash at Counter',
       notes: 'No spicy sauce'
@@ -238,10 +278,10 @@ async function runTests() {
     const priceOrder = priceAttackRes.json?.order;
     const isPriceCalculatedServerSide = priceAttackRes.statusCode === 201 &&
       priceOrder &&
-      priceOrder.subtotal === 258 &&
-      priceOrder.tax === 12.9 &&
-      priceOrder.campusFee === 10 &&
-      priceOrder.totalAmount === 280.9 &&
+      priceOrder.subtotal === expectedSubtotal &&
+      priceOrder.tax === expectedTax &&
+      priceOrder.campusFee === expectedFee &&
+      priceOrder.totalAmount === expectedTotal &&
       priceOrder.status === 'Placed' &&
       priceOrder.paymentStatus === 'Pending';
 
@@ -258,12 +298,12 @@ async function runTests() {
     // 5.6 Idempotency Key Duplicate Submission Prevention
     const idempKey = 'test_idemp_key_999';
     const firstReq = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[1]._id, quantity: 1 }],
+      items: [{ menuItemId: secondaryItem._id, quantity: 1 }],
       idempotencyKey: idempKey
     }, {}, studentCookie);
 
     const duplicateReq = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[1]._id, quantity: 1 }],
+      items: [{ menuItemId: secondaryItem._id, quantity: 1 }],
       idempotencyKey: idempKey
     }, {}, studentCookie);
 
@@ -317,7 +357,7 @@ async function runTests() {
   try {
     // Place a fresh order to test lifecycle transitions
     const freshOrderRes = await makeRequest('POST', '/api/orders', {
-      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 1 }]
+      items: [{ menuItemId: primaryItem._id, quantity: 1 }]
     }, {}, studentCookie);
     testOrderForTransitions = freshOrderRes.json?.order;
 
@@ -377,7 +417,7 @@ async function runTests() {
     const freshOrder2 = await orderService.createOrder({
       userId: 'test_user_2',
       customerName: 'Samir',
-      items: [{ menuItemId: inMemoryMenuItems[2]._id, quantity: 1 }]
+      items: [{ menuItemId: secondaryItem._id, quantity: 1 }]
     });
     const paidOrder = await orderService.updatePaymentStatus(freshOrder2.order.orderNumber, 'Paid');
     recordTest('Admin Operations: Mark payment as Paid', 'ADMIN_OPS', paidOrder.paymentStatus === 'Paid');
@@ -485,6 +525,20 @@ async function runTests() {
   console.log('\n======================================================');
   console.log(`TEST SUITE SUMMARY: ${passedCount}/${total} PASSED (${failedCount} FAILED)`);
   console.log('======================================================\n');
+
+  // Post-test cleanup of test data from MongoDB
+  try {
+    const { isConnected, getDB, COLLECTIONS } = require('../server/config/database');
+    if (isConnected()) {
+      const db = getDB();
+      await db.collection(COLLECTIONS.USERS).deleteMany({
+        email: { $in: ['aarav.patel@campusbite.edu', 'diya.sharma@campusbite.edu', 'canteen.admin@campusbite.edu'] }
+      });
+      await db.collection(COLLECTIONS.ORDERS).deleteMany({
+        customerEmail: { $in: ['aarav.patel@campusbite.edu', 'diya.sharma@campusbite.edu', 'canteen.admin@campusbite.edu'] }
+      });
+    }
+  } catch (_) {}
 
   server.close(() => {
     process.exit(failedCount > 0 ? 1 : 0);
