@@ -5,6 +5,12 @@ const { MongoClient } = require('mongodb');
 let client = null;
 let db = null;
 
+const COLLECTIONS = {
+  USERS: 'users',
+  MENU_ITEMS: 'menuItems',
+  ORDERS: 'orders'
+};
+
 /**
  * Connect to MongoDB Atlas using the official MongoDB Node.js driver.
  * Reuses the existing connection if already connected.
@@ -36,7 +42,6 @@ async function connectDB() {
     console.log(`[DB] Connected to MongoDB — database: ${dbName}`);
     return db;
   } catch (err) {
-    // Reset state so a retry can attempt a fresh connection
     client = null;
     db = null;
     console.error('[DB] MongoDB connection failed:', err.message);
@@ -60,6 +65,15 @@ function getDB() {
 }
 
 /**
+ * Returns whether the database is actively connected.
+ *
+ * @returns {boolean}
+ */
+function isConnected() {
+  return db !== null;
+}
+
+/**
  * Gracefully close the MongoDB connection.
  */
 async function closeDB() {
@@ -71,4 +85,4 @@ async function closeDB() {
   }
 }
 
-module.exports = { connectDB, getDB, closeDB };
+module.exports = { connectDB, getDB, isConnected, closeDB, COLLECTIONS };
