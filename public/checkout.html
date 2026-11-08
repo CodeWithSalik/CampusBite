@@ -39,15 +39,26 @@
     <div id="checkout-content" class="cart-layout" style="display:none; margin-top:2rem;">
       <!-- Payment & Customer Info -->
       <div class="card">
-        <h3 style="font-size:1.35rem; margin-bottom:1.25rem;">Payment Method</h3>
+        <h3 style="font-size:1.35rem; margin-bottom:1.25rem;">Payment Method (Pay at Counter)</h3>
         
         <!-- Cash at Counter Option -->
-        <div style="border:2px solid var(--color-primary); background:var(--color-primary-light); border-radius:var(--radius-md); padding:1.25rem; display:flex; align-items:flex-start; gap:1rem; margin-bottom:1.5rem;">
-          <input type="radio" id="pay-counter" name="paymentMethod" value="Cash at Counter" checked style="margin-top:0.3rem; accent-color:var(--color-primary); width:18px; height:18px;" />
+        <div style="border:1px solid var(--color-border); background:var(--color-surface-alt); border-radius:var(--radius-md); padding:1rem; display:flex; align-items:flex-start; gap:1rem; margin-bottom:1rem; cursor:pointer;" onclick="document.getElementById('pay-cash').checked=true;">
+          <input type="radio" id="pay-cash" name="paymentMethod" value="Cash at Counter" checked style="margin-top:0.3rem; accent-color:var(--color-primary); width:18px; height:18px;" />
           <div>
-            <label for="pay-counter" style="font-weight:700; font-size:1.05rem; cursor:pointer; color:var(--color-text);">💵 Pay Cash / UPI at Counter</label>
-            <p style="font-size:0.88rem; color:var(--color-text-muted); margin-top:0.25rem;">
-              Place your order now so the canteen kitchen starts cooking immediately. Pay with cash or scan the canteen UPI QR code upon collecting your food token.
+            <label for="pay-cash" style="font-weight:700; font-size:1rem; cursor:pointer; color:var(--color-text);">💵 Cash at Counter</label>
+            <p style="font-size:0.85rem; color:var(--color-text-muted); margin-top:0.25rem;">
+              Pay exact cash at the campus collection counter when picking up your food token.
+            </p>
+          </div>
+        </div>
+
+        <!-- UPI at Counter Option -->
+        <div style="border:1px solid var(--color-border); background:var(--color-surface-alt); border-radius:var(--radius-md); padding:1rem; display:flex; align-items:flex-start; gap:1rem; margin-bottom:1.5rem; cursor:pointer;" onclick="document.getElementById('pay-upi').checked=true;">
+          <input type="radio" id="pay-upi" name="paymentMethod" value="UPI at Counter" style="margin-top:0.3rem; accent-color:var(--color-primary); width:18px; height:18px;" />
+          <div>
+            <label for="pay-upi" style="font-weight:700; font-size:1rem; cursor:pointer; color:var(--color-text);">📱 UPI at Counter (GPay, PhonePe, Paytm)</label>
+            <p style="font-size:0.85rem; color:var(--color-text-muted); margin-top:0.25rem;">
+              Scan the canteen QR code at the counter before collecting your hot tray.
             </p>
           </div>
         </div>
@@ -101,7 +112,7 @@
       </div>
       <h2 style="font-size:1.75rem; margin-bottom:0.5rem;">Order Placed!</h2>
       <p style="color:var(--color-text-muted); margin-bottom:1.5rem;">
-        Your order has been sent to the canteen chef. Please pay at the counter when picking up your food.
+        Your order has been sent to the canteen kitchen. Live tracking is now active.
       </p>
 
       <div style="background:var(--color-surface-alt); border:1px solid var(--color-border); border-radius:var(--radius-md); padding:1rem; margin-bottom:1.5rem; text-align:left;">
@@ -115,9 +126,9 @@
         </div>
       </div>
 
-      <a id="modal-track-link" href="/tracking.html" class="btn btn-primary btn-lg btn-full" onclick="location.href='/tracking.html?order=' + document.getElementById('modal-order-number').textContent.replace('#',''); return false;">
+      <button id="modal-track-btn" class="btn btn-primary btn-lg btn-full" onclick="location.href='/tracking.html?order=' + document.getElementById('modal-order-number').textContent.replace('#','');">
         Track Live Status ➔
-      </a>
+      </button>
     </div>
   </div>
 

@@ -1,11 +1,40 @@
 /**
- * CampusBite — Checkout Controller
+ * CampusBite — Checkout Controller (Real Backend Connected)
  */
 const Checkout = {
-  init() {
+  idempotencyKey: null,
+  isSubmitting: false,
+
+  async init() {
     Cart.init();
+    this.idempotencyKey = 'idemp_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
     this.renderSummary();
     this.setupForm();
+    await this.verifyAuthentication();
+  },
+
+  async verifyAuthentication() {
+    const user = await Auth.checkSession();
+    const authWarning = document.getElementById('checkout-auth-warning');
+    if (!user) {
+      if (authWarning) {
+        authWarning.style.display = 'block';
+      } else {
+        const content = document.getElementById('checkout-content');
+        if (content) {
+          const banner = document.createElement('div');
+          banner.id = 'checkout-auth-warning';
+          banner.className = 'alert alert-warning';
+          banner.style.marginBottom = '1.5rem';
+          banner.innerHTML = `
+            <span>⚠️ Please <strong><a href="/login.html?redirect=checkout" style="text-decoration:underline;">Log In</a></strong> with your student account before placing an order.</span>
+          `;
+          content.parentElement.insertBefore(banner, content);
+        }
+      }
+    } else if (authWarning) {
+      authWarning.style.display = 'none';
+    }
   },
 
   renderSummary() {
@@ -53,64 +82,89 @@ const Checkout = {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
 
+      if (this.isSubmitting) return;
+
       const items = Cart.getItems();
       if (items.length === 0) {
         Utils.showToast('Your cart is empty!', 'error');
         return;
       }
 
-      const notes = document.getElementById('order-notes')?.value || '';
-      const submitBtn = document.getElementById('place-order-btn');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span>⏳ Processing order...</span>';
+      // Check user session
+      const user = await Auth.checkSession();
+      if (!user) {
+        Utils.showToast('Please log in with your student account to place orders.', 'error');
+        setTimeout(() => {
+          window.location.href = '/login.html?redirect=checkout';
+        }, 1200);
+        return;
       }
 
-      // Generate order record (saved in localStorage as mock demonstration, connected to backend in full flow)
-      const orderNumber = 'CB-' + Math.floor(100000 + Math.random() * 900000);
-      const user = Utils.getStorage(CONFIG.STORAGE_KEYS.USER, { name: 'Campus Student', email: 'student@campus.edu' });
+      const notes = document.getElementById('order-notes')?.value || '';
+      const paymentMethodRadio = document.querySelector('input[name="paymentMethod"]:checked');
+      const paymentMethod = paymentMethodRadio ? paymentMethodRadio.value : 'Cash at Counter';
 
-      const newOrder = {
-        _id: 'order-' + Date.now(),
-        orderNumber: orderNumber,
-        userId: user._id || 'guest',
-        customerName: user.name,
-        customerEmail: user.email,
-        items: items.map(i => ({
-          menuItemId: i._id,
-          name: i.name,
-          price: i.price,
-          quantity: i.quantity
-        })),
-        totalAmount: Cart.getTotal(),
-        paymentMethod: 'Cash at Counter',
-        paymentStatus: 'Pending',
-        status: 'Placed',
-        estimatedPreparationTime: Math.max(...items.map(i => i.preparationTime || 15)),
-        notes: notes,
-        createdAt: new Date().toISOString()
-      };
+      const submitBtn = document.getElementById('place-order-btn');
+      this.isSubmitting = true;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span>⏳ Confirming order with canteen kitchen...</span>';
+      }
 
-      // Save to recent order and order history
-      Utils.setStorage(CONFIG.STORAGE_KEYS.RECENT_ORDER, newOrder);
-      const history = Utils.getStorage(CONFIG.STORAGE_KEYS.ORDER_HISTORY, []);
-      history.unshift(newOrder);
-      Utils.setStorage(CONFIG.STORAGE_KEYS.ORDER_HISTORY, history);
+      try {
+        const payload = {
+          items: items.map(i => ({
+            menuItemId: i._id,
+            quantity: Number(i.quantity)
+          })),
+          paymentMethod,
+          notes,
+          idempotencyKey: this.idempotencyKey
+        };
 
-      // Clear the cart
-      Cart.clear();
+        const res = await fetch(`${CONFIG.API_BASE}/orders`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Idempotency-Key': this.idempotencyKey
+          },
+          body: JSON.stringify(payload)
+        });
 
-      // Show confirmation modal/screen
-      setTimeout(() => {
-        const modal = document.getElementById('order-success-modal');
-        if (modal) {
-          document.getElementById('modal-order-number').textContent = orderNumber;
-          document.getElementById('modal-order-total').textContent = Utils.formatCurrency(newOrder.totalAmount);
-          modal.style.display = 'flex';
+        const data = await res.json();
+
+        if (res.ok && data.success && data.order) {
+          const order = data.order;
+
+          // Clear shopping cart on successful placement
+          Cart.clear();
+
+          // Show confirmation modal
+          const modal = document.getElementById('order-success-modal');
+          if (modal) {
+            document.getElementById('modal-order-number').textContent = '#' + order.orderNumber;
+            document.getElementById('modal-order-total').textContent = Utils.formatCurrency(order.totalAmount);
+            modal.style.display = 'flex';
+          } else {
+            window.location.href = `/tracking.html?order=${order.orderNumber}`;
+          }
         } else {
-          window.location.href = `/tracking.html?order=${orderNumber}`;
+          Utils.showToast(data.error || 'Failed to place order. Please review your cart.', 'error');
+          this.isSubmitting = false;
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'Place Order Now ➔';
+          }
         }
-      }, 700);
+      } catch (err) {
+        console.error('Order submission error:', err);
+        Utils.showToast('Network error while placing order. Please try again.', 'error');
+        this.isSubmitting = false;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = 'Place Order Now ➔';
+        }
+      }
     });
   }
 };

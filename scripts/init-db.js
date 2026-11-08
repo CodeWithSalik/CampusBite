@@ -40,9 +40,13 @@ async function initDatabase() {
     await ordersCollection.createIndex({ orderNumber: 1 }, { unique: true });
     await ordersCollection.createIndex({ userId: 1 });
     await ordersCollection.createIndex({ createdAt: -1 });
+    await ordersCollection.createIndex({ status: 1 });
+    await ordersCollection.createIndex({ userId: 1, idempotencyKey: 1 }, { sparse: true });
     console.log('  ✓ Unique index on orders.orderNumber established');
     console.log('  ✓ Index on orders.userId established');
     console.log('  ✓ Index on orders.createdAt established');
+    console.log('  ✓ Index on orders.status established');
+    console.log('  ✓ Sparse index on orders.idempotencyKey established');
 
     // Report status
     const collections = await db.listCollections().toArray();

@@ -14,6 +14,8 @@ const { connectDB, isConnected } = require('./server/config/database');
 const healthRoutes = require('./server/routes/health');
 const authRoutes = require('./server/routes/auth');
 const menuRoutes = require('./server/routes/menu');
+const orderRoutes = require('./server/routes/orders');
+const adminRoutes = require('./server/routes/admin');
 const { protectAdminPages } = require('./server/middleware/auth');
 const notFound = require('./server/middleware/notFound');
 const errorHandler = require('./server/middleware/errorHandler');
@@ -42,7 +44,7 @@ app.use(
 // ─── Global rate limiter for API ────────────────────────────────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200,                  // limit each IP to 200 requests per window
+  max: 300,                  // limit each IP to 300 requests per window
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -99,6 +101,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─── 404 for unknown API endpoints ─────────────────────────────────
 app.use('/api', notFound);

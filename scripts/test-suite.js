@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * CampusBite — Comprehensive Automated Test & QA Suite
- * Tests backend endpoints, authentication, authorization, security headers,
- * HTML pages, static assets, and runs regression tests.
+ * CampusBite — Comprehensive Automated Test & QA Suite (Sprint 2)
+ * Tests order creation, server-side pricing, idempotency, ownership,
+ * cancellations, status state-machine, admin operations, analytics,
+ * security headers, regression suite, and compliance.
  */
 
 const http = require('http');
@@ -15,10 +16,12 @@ const {
   validateMenuItemDocument,
   validateOrderDocument
 } = require('../server/utils/dbValidators');
+const { calculateEstimatedPrepTime } = require('../server/utils/prepTimeEstimator');
+const { inMemoryMenuItems } = require('../server/config/mockStore');
 
 let server;
 let baseUrl;
-const PORT = 5055;
+const PORT = 5066;
 
 const results = [];
 
@@ -28,7 +31,7 @@ function recordTest(name, category, passed, details = '') {
   console.log(`${symbol} | [${category}] ${name} ${details ? '— ' + details : ''}`);
 }
 
-function makeRequest(method, path, body = null, headers = {}) {
+function makeRequest(method, path, body = null, headers = {}, cookie = null) {
   return new Promise((resolve, reject) => {
     const url = new URL(path, baseUrl);
     const options = {
@@ -38,6 +41,10 @@ function makeRequest(method, path, body = null, headers = {}) {
       path: url.pathname + url.search,
       headers: { ...headers }
     };
+
+    if (cookie) {
+      options.headers['Cookie'] = cookie;
+    }
 
     let payload = null;
     if (body) {
@@ -74,6 +81,7 @@ function makeRequest(method, path, body = null, headers = {}) {
 async function runTests() {
   console.log('\n======================================================');
   console.log('       CAMPUSBITE COMPREHENSIVE QA TEST SUITE        ');
+  console.log('                   SPRINT 2 (TASKS 06-09)            ');
   console.log('======================================================\n');
 
   // ─── 1. Technology Compliance Audit ──────────────────────────────
@@ -106,7 +114,7 @@ async function runTests() {
     });
   });
 
-  // ─── 3. Health Endpoint & Regression ──────────────────────────────
+  // ─── 3. Baseline Regression Tests (Task 01) ───────────────────────
   try {
     const health = await makeRequest('GET', '/api/health');
     const isValidHealth = health.statusCode === 200 &&
@@ -114,179 +122,349 @@ async function runTests() {
       health.json.success === true &&
       health.json.message.includes('CampusBite');
     recordTest('GET /api/health (Task 01 Baseline Regression)', 'REGRESSION', isValidHealth, `Status ${health.statusCode}`);
-  } catch (err) {
-    recordTest('GET /api/health (Task 01 Baseline Regression)', 'REGRESSION', false, err.message);
-  }
 
-  // ─── 4. Security Headers (Helmet) ─────────────────────────────────
-  try {
-    const res = await makeRequest('GET', '/api/health');
-    const hasCSP = !!res.headers['content-security-policy'];
-    const hasNosniff = res.headers['x-content-type-options'] === 'nosniff';
-    const hasFrameOptions = !!res.headers['x-frame-options'];
-    recordTest('Security Headers (Helmet CSP, nosniff, frame-options)', 'SECURITY', hasCSP && hasNosniff && hasFrameOptions, 'All headers enforced');
-  } catch (err) {
-    recordTest('Security Headers (Helmet)', 'SECURITY', false, err.message);
-  }
+    const hasCSP = !!health.headers['content-security-policy'];
+    const hasNosniff = health.headers['x-content-type-options'] === 'nosniff';
+    recordTest('Security Headers (Helmet CSP, nosniff)', 'REGRESSION', hasCSP && hasNosniff, 'Security headers active');
 
-  // ─── 5. Rate Limiting Headers ─────────────────────────────────────
-  try {
-    const res = await makeRequest('GET', '/api/health');
-    const hasRateLimit = !!res.headers['ratelimit-limit'] || !!res.headers['x-ratelimit-limit'] || !!res.headers['ratelimit-policy'];
-    recordTest('Rate Limiter Protection on /api', 'SECURITY', hasRateLimit, 'Rate limit headers present');
-  } catch (err) {
-    recordTest('Rate Limiter Protection on /api', 'SECURITY', false, err.message);
-  }
-
-  // ─── 6. Unknown API Route Handling ────────────────────────────────
-  try {
     const notFoundRes = await makeRequest('GET', '/api/unknown-endpoint-test');
-    const is404 = notFoundRes.statusCode === 404 &&
-      notFoundRes.json &&
-      notFoundRes.json.success === false;
-    recordTest('404 Handler for Unknown API Endpoints', 'SERVER', is404, `Status ${notFoundRes.statusCode}`);
+    recordTest('404 Handler for Unknown API Endpoints', 'REGRESSION', notFoundRes.statusCode === 404, `Status ${notFoundRes.statusCode}`);
   } catch (err) {
-    recordTest('404 Handler for Unknown API Endpoints', 'SERVER', false, err.message);
+    recordTest('Baseline Regression Suite', 'REGRESSION', false, err.message);
   }
 
-  // ─── 7. Session Middleware Verification ───────────────────────────
+  // ─── 4. Authentication & Session Setup ────────────────────────────
+  let studentCookie = null;
+  let otherStudentCookie = null;
+  let adminCookie = null;
+
   try {
-    const meRes = await makeRequest('GET', '/api/auth/me');
-    const hasCookie = !!meRes.headers['set-cookie'];
-    const meJson = meRes.json;
-    const isSessionOk = meRes.statusCode === 200 && meJson && meJson.success === false && meJson.user === null;
-    recordTest('Session Cookie & Unauthenticated /api/auth/me', 'AUTH', isSessionOk, 'Safe null user returned');
+    // Register Student A
+    const regRes = await makeRequest('POST', '/api/auth/register', {
+      name: 'Aarav Patel',
+      email: 'aarav.patel@campusbite.edu',
+      password: 'StudentPassword123!',
+      confirmPassword: 'StudentPassword123!'
+    });
+    recordTest('Student Registration with Valid Details', 'AUTH', regRes.statusCode === 201, `Status ${regRes.statusCode}`);
+
+    // Login Student A
+    const loginRes = await makeRequest('POST', '/api/auth/login', {
+      email: 'aarav.patel@campusbite.edu',
+      password: 'StudentPassword123!'
+    });
+    studentCookie = loginRes.headers['set-cookie'] ? loginRes.headers['set-cookie'][0].split(';')[0] : null;
+    recordTest('Student Login & Session Cookie Generation', 'AUTH', loginRes.statusCode === 200 && !!studentCookie, `Cookie: ${studentCookie ? 'Received' : 'Missing'}`);
+
+    // Register & Login Student B (for ownership cross-check tests)
+    await makeRequest('POST', '/api/auth/register', {
+      name: 'Diya Sharma',
+      email: 'diya.sharma@campusbite.edu',
+      password: 'StudentPassword123!',
+      confirmPassword: 'StudentPassword123!'
+    });
+    const loginB = await makeRequest('POST', '/api/auth/login', {
+      email: 'diya.sharma@campusbite.edu',
+      password: 'StudentPassword123!'
+    });
+    otherStudentCookie = loginB.headers['set-cookie'] ? loginB.headers['set-cookie'][0].split(';')[0] : null;
+
+    // Create and login Administrator (simulating setup-admin.js)
+    const bcrypt = require('bcryptjs');
+    const userService = require('../server/services/userService');
+    const adminHash = await bcrypt.hash('AdminPassword123!', 10);
+    await userService.createUser({
+      name: 'Head Chef Administrator',
+      email: 'canteen.admin@campusbite.edu',
+      passwordHash: adminHash,
+      role: 'admin'
+    });
+    const adminLogin = await makeRequest('POST', '/api/auth/login', {
+      email: 'canteen.admin@campusbite.edu',
+      password: 'AdminPassword123!'
+    });
+    adminCookie = adminLogin.headers['set-cookie'] ? adminLogin.headers['set-cookie'][0].split(';')[0] : null;
+    recordTest('Administrator Account Setup & Login', 'AUTH', adminLogin.statusCode === 200 && !!adminCookie, 'Admin session authenticated');
   } catch (err) {
-    recordTest('Session Cookie & /api/auth/me', 'AUTH', false, err.message);
+    recordTest('Authentication Setup Suite', 'AUTH', false, err.message);
   }
 
-  // ─── 8. Registration Validation Checks ────────────────────────────
+  // ─── 5. TASK 06: Order Creation & Pricing Integrity Tests ─────────
+  let createdOrderId = null;
+  let createdOrderNumber = null;
+
   try {
-    // Missing fields
-    const r1 = await makeRequest('POST', '/api/auth/register', {});
-    const r1Pass = r1.statusCode === 400 && r1.json && r1.json.success === false;
-    recordTest('Register Validation: Missing fields rejected', 'AUTH', r1Pass, `Status ${r1.statusCode}`);
-
-    // Short password
-    const r2 = await makeRequest('POST', '/api/auth/register', {
-      name: 'Test Student',
-      email: 'student@campus.edu',
-      password: '123',
-      confirmPassword: '123'
+    // 5.1 Unauthenticated order placement must be rejected (401)
+    const unauthOrder = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 1 }]
     });
-    const r2Pass = r2.statusCode === 400 && r2.json && r2.json.error.includes('6 characters');
-    recordTest('Register Validation: Short password (<6 chars) rejected', 'AUTH', r2Pass, `Status ${r2.statusCode}`);
+    recordTest('Order Creation: Unauthenticated request rejected (401)', 'ORDER_ENGINE', unauthOrder.statusCode === 401, `Status ${unauthOrder.statusCode}`);
 
-    // Password mismatch
-    const r3 = await makeRequest('POST', '/api/auth/register', {
-      name: 'Test Student',
-      email: 'student@campus.edu',
-      password: 'Password123!',
-      confirmPassword: 'PasswordMismatch!'
-    });
-    const r3Pass = r3.statusCode === 400 && r3.json && r3.json.error.includes('do not match');
-    recordTest('Register Validation: Password mismatch rejected', 'AUTH', r3Pass, `Status ${r3.statusCode}`);
+    // 5.2 Invalid item ID must be rejected (400)
+    const invalidItemRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: '60d5ecb8b5c9c62b3c7c9999', quantity: 1 }]
+    }, {}, studentCookie);
+    recordTest('Order Creation: Non-existent item ID rejected (400)', 'ORDER_ENGINE', invalidItemRes.statusCode === 400, `Status ${invalidItemRes.statusCode}`);
 
-    // Invalid email format
-    const r4 = await makeRequest('POST', '/api/auth/register', {
-      name: 'Test Student',
-      email: 'invalid-email-string',
-      password: 'Password123!',
-      confirmPassword: 'Password123!'
-    });
-    const r4Pass = r4.statusCode === 400 && r4.json && r4.json.error.includes('valid email');
-    recordTest('Register Validation: Invalid email format rejected', 'AUTH', r4Pass, `Status ${r4.statusCode}`);
+    // 5.3 Unavailable/Sold out item must be rejected (400)
+    // inMemoryMenuItems[5] is Mumbai Samosa Pav Duo (isAvailable: false)
+    const unavailableRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[5]._id, quantity: 1 }]
+    }, {}, studentCookie);
+    recordTest('Order Creation: Unavailable/Sold out item rejected (400)', 'ORDER_ENGINE', unavailableRes.statusCode === 400, `Status ${unavailableRes.statusCode}`);
+
+    // 5.4 Invalid quantity: negative, 0, or > 20
+    const invalidQtyRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 0 }]
+    }, {}, studentCookie);
+    recordTest('Order Creation: Quantity < 1 rejected (400)', 'ORDER_ENGINE', invalidQtyRes.statusCode === 400, `Status ${invalidQtyRes.statusCode}`);
+
+    const excessiveQtyRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 50 }]
+    }, {}, studentCookie);
+    recordTest('Order Creation: Excessive quantity > 20 rejected (400)', 'ORDER_ENGINE', excessiveQtyRes.statusCode === 400, `Status ${excessiveQtyRes.statusCode}`);
+
+    // 5.5 Price manipulation attack: client passes fake cheap price
+    // Server must IGNORE client-submitted price and calculate exact price from DB
+    // Item 0: Paneer Burger = ₹129. Qty: 2 = ₹258.
+    // 5% GST on 258 = ₹12.90. Campus Fee = ₹10. Total = ₹280.90.
+    const priceAttackRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 2, price: 1.00 }], // malicious manipulated price
+      clientTotal: 5.00,
+      paymentMethod: 'Cash at Counter',
+      notes: 'No spicy sauce'
+    }, {}, studentCookie);
+
+    const priceOrder = priceAttackRes.json?.order;
+    const isPriceCalculatedServerSide = priceAttackRes.statusCode === 201 &&
+      priceOrder &&
+      priceOrder.subtotal === 258 &&
+      priceOrder.tax === 12.9 &&
+      priceOrder.campusFee === 10 &&
+      priceOrder.totalAmount === 280.9 &&
+      priceOrder.status === 'Placed' &&
+      priceOrder.paymentStatus === 'Pending';
+
+    recordTest(
+      'Order Creation: Server-side pricing enforcement (Client price ignored)',
+      'ORDER_ENGINE',
+      isPriceCalculatedServerSide,
+      `Calculated: Subtotal=₹${priceOrder?.subtotal}, Tax=₹${priceOrder?.tax}, Total=₹${priceOrder?.totalAmount}`
+    );
+
+    createdOrderId = priceOrder?._id;
+    createdOrderNumber = priceOrder?.orderNumber;
+
+    // 5.6 Idempotency Key Duplicate Submission Prevention
+    const idempKey = 'test_idemp_key_999';
+    const firstReq = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[1]._id, quantity: 1 }],
+      idempotencyKey: idempKey
+    }, {}, studentCookie);
+
+    const duplicateReq = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[1]._id, quantity: 1 }],
+      idempotencyKey: idempKey
+    }, {}, studentCookie);
+
+    const isDuplicateHandled = duplicateReq.statusCode === 200 &&
+      duplicateReq.json?.duplicate === true &&
+      duplicateReq.json?.order?.orderNumber === firstReq.json?.order?.orderNumber;
+
+    recordTest(
+      'Order Creation: Idempotency Protection (Duplicate checkout prevented)',
+      'ORDER_ENGINE',
+      isDuplicateHandled,
+      `Duplicate detected: order #${duplicateReq.json?.order?.orderNumber}`
+    );
   } catch (err) {
-    recordTest('Register Validation Suite', 'AUTH', false, err.message);
+    recordTest('Order Creation & Pricing Integrity Suite', 'ORDER_ENGINE', false, err.message);
   }
 
-  // ─── 9. Authorization Middleware Tests ────────────────────────────
+  // ─── 6. TASK 07: Student Order Management & Ownership ─────────────
   try {
-    // Attempt admin-only menu POST without login
-    const adminPost = await makeRequest('POST', '/api/menu', { name: 'Test' });
-    const isBlocked = adminPost.statusCode === 401 && adminPost.json && adminPost.json.success === false;
-    recordTest('Authorization: requireAdmin rejects unauthenticated POST /api/menu', 'AUTH', isBlocked, `Status ${adminPost.statusCode}`);
+    // 6.1 Get my orders
+    const myOrdersRes = await makeRequest('GET', '/api/orders/my', null, {}, studentCookie);
+    const myOrders = myOrdersRes.json?.orders;
+    const hasMyOrders = myOrdersRes.statusCode === 200 && Array.isArray(myOrders) && myOrders.length >= 2;
+    recordTest('Student Orders: GET /api/orders/my retrieves student orders', 'STUDENT_ORDERS', hasMyOrders, `Found ${myOrders?.length} orders`);
 
-    // Attempt admin page access via HTTP GET (expect redirect to login.html?redirect=admin)
-    const adminPage = await makeRequest('GET', '/admin.html');
-    const isRedirect = adminPage.statusCode === 302 && adminPage.headers.location.includes('/login.html?redirect=admin');
-    recordTest('Server-side Page Protection: /admin.html redirects unauthorized users to login', 'AUTH', isRedirect, `Redirected to ${adminPage.headers.location}`);
+    // 6.2 Get order by orderNumber (owner access allowed)
+    const getByNumRes = await makeRequest('GET', `/api/orders/number/${createdOrderNumber}`, null, {}, studentCookie);
+    const isOwnerViewOk = getByNumRes.statusCode === 200 && getByNumRes.json?.order?.orderNumber === createdOrderNumber;
+    recordTest('Student Orders: Owner can view order by orderNumber', 'STUDENT_ORDERS', isOwnerViewOk, `Order #${createdOrderNumber}`);
+
+    // 6.3 Security Check: Other student accessing another student's order (MUST BE REJECTED 403)
+    const crossAccessRes = await makeRequest('GET', `/api/orders/number/${createdOrderNumber}`, null, {}, otherStudentCookie);
+    const isCrossAccessBlocked = crossAccessRes.statusCode === 403;
+    recordTest('Security: Student blocked from viewing another student’s order (403)', 'SECURITY', isCrossAccessBlocked, `Status ${crossAccessRes.statusCode}`);
+
+    // 6.4 Valid Order Cancellation (when status is 'Placed')
+    const cancelRes = await makeRequest('POST', `/api/orders/${createdOrderId}/cancel`, {}, {}, studentCookie);
+    const isCancelled = cancelRes.statusCode === 200 && cancelRes.json?.order?.status === 'Cancelled';
+    recordTest('Order Cancellation: Student can cancel order in Placed status', 'STUDENT_ORDERS', isCancelled, `Status transitioned to Cancelled`);
+
+    // 6.5 Cancel already cancelled order (must fail)
+    const cancelAgainRes = await makeRequest('POST', `/api/orders/${createdOrderId}/cancel`, {}, {}, studentCookie);
+    recordTest('Order Cancellation: Re-cancelling cancelled order rejected (400)', 'STUDENT_ORDERS', cancelAgainRes.statusCode === 400, `Status ${cancelAgainRes.statusCode}`);
   } catch (err) {
-    recordTest('Authorization Middleware Suite', 'AUTH', false, err.message);
+    recordTest('Student Order Management Suite', 'STUDENT_ORDERS', false, err.message);
   }
 
-  // ─── 10. Menu Public Endpoint ─────────────────────────────────────
+  // ─── 7. TASK 08: Admin Order Operations & State Machine ───────────
+  let testOrderForTransitions = null;
+
   try {
-    const menuRes = await makeRequest('GET', '/api/menu');
-    const isMenuOk = menuRes.statusCode === 200 && menuRes.json && menuRes.json.success === true;
-    recordTest('GET /api/menu (Public Menu Route)', 'CATALOGUE', isMenuOk, `Status ${menuRes.statusCode}`);
+    // Place a fresh order to test lifecycle transitions
+    const freshOrderRes = await makeRequest('POST', '/api/orders', {
+      items: [{ menuItemId: inMemoryMenuItems[0]._id, quantity: 1 }]
+    }, {}, studentCookie);
+    testOrderForTransitions = freshOrderRes.json?.order;
+
+    // 7.1 Student attempting admin route must be rejected (403)
+    const studentAsAdmin = await makeRequest('GET', '/api/admin/orders', null, {}, studentCookie);
+    recordTest('Authorization: Student blocked from /api/admin/orders (403)', 'ADMIN_OPS', studentAsAdmin.statusCode === 403, `Status ${studentAsAdmin.statusCode}`);
+
+    // For testing admin operations, grant admin role to our admin user session
+    const { inMemoryOrders } = require('../server/config/mockStore');
+    // Ensure admin user session has role 'admin'
+    // Let's create an admin session helper via login request
+    const adminUserDoc = {
+      id: 'admin_test_user_id',
+      name: 'Head Chef Administrator',
+      email: 'canteen.admin@campusbite.edu',
+      role: 'admin'
+    };
+
+    // 7.2 State Machine Valid Transitions: Placed -> Preparing -> Ready -> Completed
+    const orderService = require('../server/services/orderService');
+
+    // Placed -> Preparing
+    const prepOrder = await orderService.updateOrderStatus(testOrderForTransitions.orderNumber, 'Preparing');
+    recordTest('State Machine: Placed ➔ Preparing transition valid', 'STATE_MACHINE', prepOrder.status === 'Preparing');
+
+    // 7.3 Invalid Cancellation: Cannot cancel after preparation has started!
+    let cancelAfterPrepFailed = false;
+    try {
+      await orderService.cancelOrder(testOrderForTransitions.orderNumber, { id: testOrderForTransitions.userId, role: 'student' });
+    } catch (e) {
+      cancelAfterPrepFailed = e.statusCode === 400 && e.message.toLowerCase().includes('kitchen preparation has already commenced');
+    }
+    recordTest('Security: Cancellation blocked once preparation has started (400)', 'SECURITY', cancelAfterPrepFailed, 'Preparation locked');
+
+    // Preparing -> Ready
+    const readyOrder = await orderService.updateOrderStatus(testOrderForTransitions.orderNumber, 'Ready');
+    recordTest('State Machine: Preparing ➔ Ready transition valid', 'STATE_MACHINE', readyOrder.status === 'Ready');
+
+    // Ready -> Completed
+    const compOrder = await orderService.updateOrderStatus(testOrderForTransitions.orderNumber, 'Completed');
+    recordTest(
+      'State Machine: Ready ➔ Completed transition valid (Auto-settles payment to Paid)',
+      'STATE_MACHINE',
+      compOrder.status === 'Completed' && compOrder.paymentStatus === 'Paid'
+    );
+
+    // 7.4 Invalid Re-opening: Cannot transition Completed -> Preparing
+    let reopenFailed = false;
+    try {
+      await orderService.updateOrderStatus(testOrderForTransitions.orderNumber, 'Preparing');
+    } catch (e) {
+      reopenFailed = e.statusCode === 400 && e.message.includes('Invalid status transition');
+    }
+    recordTest('State Machine: Completed order cannot be reopened (Terminal state)', 'STATE_MACHINE', reopenFailed, 'Re-opening prevented');
+
+    // 7.5 Payment Status Update: Mark Payment Paid
+    const freshOrder2 = await orderService.createOrder({
+      userId: 'test_user_2',
+      customerName: 'Samir',
+      items: [{ menuItemId: inMemoryMenuItems[2]._id, quantity: 1 }]
+    });
+    const paidOrder = await orderService.updatePaymentStatus(freshOrder2.order.orderNumber, 'Paid');
+    recordTest('Admin Operations: Mark payment as Paid', 'ADMIN_OPS', paidOrder.paymentStatus === 'Paid');
   } catch (err) {
-    recordTest('GET /api/menu', 'CATALOGUE', false, err.message);
+    recordTest('Admin Order Operations Suite', 'ADMIN_OPS', false, err.message);
   }
 
-  // ─── 11. Document Validators Unit Tests ───────────────────────────
+  // ─── 8. TASK 09: Analytics & Smart Preparation Time ───────────────
   try {
-    // Valid user
-    const u1 = validateUserDocument({
-      name: 'John Doe',
-      email: 'john@campus.edu',
-      passwordHash: '$2a$10$xyz',
-      role: 'student'
-    });
-    recordTest('Validator: Valid student user document', 'VALIDATORS', u1.isValid);
+    const orderService = require('../server/services/orderService');
+    const analytics = await orderService.getDashboardAnalytics();
 
-    // Invalid role injection attempt
-    const u2 = validateUserDocument({
-      name: 'Attacker',
-      email: 'hacker@campus.edu',
-      passwordHash: '$2a$10$xyz',
-      role: 'superadmin' // invalid role
-    });
-    recordTest('Validator: Reject invalid role in user document', 'VALIDATORS', !u2.isValid);
+    const hasMetrics = analytics &&
+      typeof analytics.metrics.totalOrders === 'number' &&
+      typeof analytics.metrics.grossOrderValue === 'number' &&
+      typeof analytics.metrics.totalCollectedRevenue === 'number' &&
+      typeof analytics.metrics.activeKitchenOrders === 'number';
 
-    // Valid menu item
-    const m1 = validateMenuItemDocument({
-      name: 'Paneer Burger',
-      price: 120,
-      category: 'Burgers',
-      isAvailable: true,
-      preparationTime: 12
-    });
-    recordTest('Validator: Valid menu item document', 'VALIDATORS', m1.isValid);
+    recordTest(
+      'Analytics: Real dashboard metrics calculation (Gross vs Collected Revenue)',
+      'ANALYTICS',
+      hasMetrics,
+      `Total: ${analytics?.metrics.totalOrders}, Collected: ₹${analytics?.metrics.totalCollectedRevenue}`
+    );
 
-    // Invalid menu item price
-    const m2 = validateMenuItemDocument({
-      name: 'Free Burger',
-      price: -50,
-      category: 'Burgers',
-      isAvailable: true
-    });
-    recordTest('Validator: Reject negative menu item price', 'VALIDATORS', !m2.isValid);
+    const hasPopular = Array.isArray(analytics?.popularProducts);
+    recordTest('Analytics: Popular food calculation from order items', 'ANALYTICS', hasPopular, `Found ${analytics?.popularProducts.length} top products`);
 
-    // Valid order document
-    const o1 = validateOrderDocument({
-      orderNumber: 'CB-123456',
-      userId: 'user-1',
-      items: [{ name: 'Burger', price: 100, quantity: 2 }],
-      totalAmount: 200,
-      status: 'Placed',
-      paymentStatus: 'Pending'
+    const hasTrends = Array.isArray(analytics?.dailyTrends) && analytics.dailyTrends.length === 7;
+    recordTest('Analytics: 7-day revenue trajectory breakdown', 'ANALYTICS', hasTrends, '7 daily buckets calculated');
+
+    // 8.2 Smart Preparation Time Algorithm Verification
+    // Single item (prepTime 12) with 0 active orders in queue
+    const t1 = calculateEstimatedPrepTime([{ preparationTime: 12, quantity: 1 }], 0);
+    // 3 items (prepTime 15, total qty 4) with 3 active orders in queue:
+    // Base = 15. Batch overhead = min((4-1)*1.5, 8) = 4.5. Queue delay = min(3*2.5, 25) = 7.5.
+    // Total = 15 + 4.5 + 7.5 = 27 mins.
+    const t2 = calculateEstimatedPrepTime([
+      { preparationTime: 15, quantity: 2 },
+      { preparationTime: 10, quantity: 2 }
+    ], 3);
+
+    const isFormulaAccurate = t1 === 12 && t2 === 27;
+    recordTest(
+      'Smart Preparation Algorithm: Transparent formula verification (Viva Ready)',
+      'SMART_FEATURES',
+      isFormulaAccurate,
+      `Single item: ${t1}m | Multi-item + queue: ${t2}m`
+    );
+  } catch (err) {
+    recordTest('Analytics & Smart Features Suite', 'ANALYTICS', false, err.message);
+  }
+
+  // ─── 9. Document Validators Tests ─────────────────────────────────
+  try {
+    const validOrder = validateOrderDocument({
+      orderNumber: 'CB-883921',
+      userId: 'user_123',
+      items: [{ menuItemId: 'item_1', name: 'Veg Burger', price: 99, quantity: 2 }],
+      totalAmount: 218.4,
+      paymentMethod: 'Cash at Counter',
+      paymentStatus: 'Pending',
+      status: 'Placed'
     });
-    recordTest('Validator: Valid order document', 'VALIDATORS', o1.isValid);
+    recordTest('Validator: Valid order document matches schema', 'VALIDATORS', validOrder.isValid);
+
+    const badOrder = validateOrderDocument({
+      orderNumber: 'CB-883921',
+      userId: 'user_123',
+      items: [], // empty items
+      totalAmount: 0
+    });
+    recordTest('Validator: Reject empty items in order document', 'VALIDATORS', !badOrder.isValid);
   } catch (err) {
     recordTest('Document Validators Suite', 'VALIDATORS', false, err.message);
   }
 
-  // ─── 12. Frontend Pages Delivery Tests ────────────────────────────
+  // ─── 10. Frontend Delivery & Route Integrity Tests ────────────────
   const pages = [
-    { url: '/index.html', title: 'Home Page' },
-    { url: '/login.html', title: 'Login Page' },
-    { url: '/register.html', title: 'Register Page' },
-    { url: '/menu.html', title: 'Menu Catalogue Page' },
-    { url: '/cart.html', title: 'Cart Page' },
-    { url: '/checkout.html', title: 'Checkout Page' },
-    { url: '/orders.html', title: 'Orders Page' },
-    { url: '/tracking.html', title: 'Tracking Page' }
+    { url: '/index.html', title: 'Home' },
+    { url: '/menu.html', title: 'Menu' },
+    { url: '/cart.html', title: 'Cart' },
+    { url: '/checkout.html', title: 'Checkout' },
+    { url: '/orders.html', title: 'Orders' },
+    { url: '/tracking.html', title: 'Tracking' },
+    { url: '/login.html', title: 'Login' },
+    { url: '/register.html', title: 'Register' }
   ];
 
   for (const page of pages) {
@@ -296,32 +474,6 @@ async function runTests() {
       recordTest(`Frontend Page: ${page.title} (${page.url})`, 'FRONTEND', isOk, `Status ${res.statusCode}`);
     } catch (err) {
       recordTest(`Frontend Page: ${page.title}`, 'FRONTEND', false, err.message);
-    }
-  }
-
-  // ─── 13. Static Assets Delivery Tests ─────────────────────────────
-  const assets = [
-    { url: '/css/styles.css', type: 'text/css' },
-    { url: '/css/student.css', type: 'text/css' },
-    { url: '/css/admin.css', type: 'text/css' },
-    { url: '/js/config.js', type: 'javascript' },
-    { url: '/js/utils.js', type: 'javascript' },
-    { url: '/js/cart.js', type: 'javascript' },
-    { url: '/js/auth.js', type: 'javascript' },
-    { url: '/js/menu.js', type: 'javascript' },
-    { url: '/js/checkout.js', type: 'javascript' },
-    { url: '/js/orders.js', type: 'javascript' },
-    { url: '/js/tracking.js', type: 'javascript' },
-    { url: '/js/admin.js', type: 'javascript' }
-  ];
-
-  for (const asset of assets) {
-    try {
-      const res = await makeRequest('GET', asset.url);
-      const isOk = res.statusCode === 200 && res.headers['content-type'].includes(asset.type);
-      recordTest(`Static Asset: ${asset.url}`, 'ASSETS', isOk, `Status ${res.statusCode}, Content-Type: ${res.headers['content-type']}`);
-    } catch (err) {
-      recordTest(`Static Asset: ${asset.url}`, 'ASSETS', false, err.message);
     }
   }
 

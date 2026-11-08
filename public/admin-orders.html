@@ -67,9 +67,23 @@
     </header>
 
     <main class="admin-content">
-      <div class="demo-banner">
-        <span>⚡</span>
-        <span><strong>Real-time Kitchen Display:</strong> Updates made to order status immediately propagate to the student order tracking timeline.</span>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem;">
+        <div style="display:flex; gap:0.75rem; flex-wrap:wrap; flex:1; max-width:540px;">
+          <input type="text" id="admin-order-search" class="form-control" placeholder="Search order token, student name, email..." style="flex:1; min-width:220px;" oninput="Admin.searchQuery = this.value; Admin.renderOrdersManagement();" />
+          <select id="admin-status-filter" class="form-control" style="width:160px;" onchange="Admin.activeFilter = this.value; Admin.renderOrdersManagement();">
+            <option value="all">All Statuses</option>
+            <option value="Placed">Placed</option>
+            <option value="Preparing">Preparing</option>
+            <option value="Ready">Ready</option>
+            <option value="Completed">Completed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="Admin.renderOrdersManagement()">
+            🔄 Refresh Queue
+          </button>
+        </div>
       </div>
 
       <div class="table-responsive">

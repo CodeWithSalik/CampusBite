@@ -1,79 +1,20 @@
 /**
- * CampusBite — Admin Dashboard Controller
- * Implements Menu Management, Order Management & Visual Analytics.
+ * CampusBite — Admin Dashboard Controller (Real Backend API Connected)
+ * Full Order Management, Menu Management, and Live MongoDB Analytics.
  */
 const Admin = {
-  // Demo baseline orders to ensure complete demonstrability even before live orders are recorded
-  demoOrders: [
-    {
-      _id: 'adm-ord-1',
-      orderNumber: 'CB-948101',
-      customerName: 'Aditya Verma',
-      customerEmail: 'aditya.v@univ.edu',
-      items: [
-        { name: 'Paneer Makhani Burger', price: 129, quantity: 2 },
-        { name: 'Thick Cold Coffee', price: 85, quantity: 2 }
-      ],
-      totalAmount: 450.00,
-      paymentMethod: 'Cash at Counter',
-      paymentStatus: 'Paid',
-      status: 'Completed',
-      createdAt: new Date(Date.now() - 3600000 * 4).toISOString()
-    },
-    {
-      _id: 'adm-ord-2',
-      orderNumber: 'CB-948102',
-      customerName: 'Priya Nambiar',
-      customerEmail: 'priya.n@univ.edu',
-      items: [
-        { name: 'Farmhouse Special Pizza (7")', price: 189, quantity: 1 },
-        { name: 'Crispy Peri-Peri Fries', price: 79, quantity: 1 }
-      ],
-      totalAmount: 291.40,
-      paymentMethod: 'UPI at Counter',
-      paymentStatus: 'Pending',
-      status: 'Preparing',
-      createdAt: new Date(Date.now() - 3600000 * 1.5).toISOString()
-    },
-    {
-      _id: 'adm-ord-3',
-      orderNumber: 'CB-948103',
-      customerName: 'Rohan Mehra',
-      customerEmail: 'rohan.m@univ.edu',
-      items: [
-        { name: 'Mumbai Samosa Pav Duo', price: 60, quantity: 3 },
-        { name: 'Masala Chai', price: 30, quantity: 3 }
-      ],
-      totalAmount: 294.00,
-      paymentMethod: 'Cash at Counter',
-      paymentStatus: 'Pending',
-      status: 'Placed',
-      createdAt: new Date(Date.now() - 1800000).toISOString()
-    },
-    {
-      _id: 'adm-ord-4',
-      orderNumber: 'CB-948104',
-      customerName: 'Sneha Kapoor',
-      customerEmail: 'sneha.k@univ.edu',
-      items: [
-        { name: 'Chole Bhature Platter', price: 140, quantity: 1 },
-        { name: 'Gulab Jamun (2 Pcs)', price: 50, quantity: 1 }
-      ],
-      totalAmount: 209.50,
-      paymentMethod: 'UPI at Counter',
-      paymentStatus: 'Paid',
-      status: 'Ready',
-      createdAt: new Date(Date.now() - 900000).toISOString()
-    }
-  ],
-
   orders: [],
   menuItems: [],
+  metrics: null,
+  activeFilter: 'all',
+  searchQuery: '',
 
   async init() {
-    this.loadOrders();
-    await this.loadMenu();
     this.checkAdminAuth();
+    await Promise.all([
+      this.loadMenu(),
+      this.loadOrders()
+    ]);
   },
 
   checkAdminAuth() {
@@ -84,99 +25,159 @@ const Admin = {
     }
   },
 
-  loadOrders() {
-    const stored = Utils.getStorage(CONFIG.STORAGE_KEYS.ORDER_HISTORY, []);
-    // Combine live student orders with baseline demo orders
-    this.orders = [...stored, ...this.demoOrders];
-  },
-
   async loadMenu() {
     try {
       const res = await fetch(`${CONFIG.API_BASE}/menu`);
       if (res.ok) {
         const data = await res.json();
-        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+        if (data.success && Array.isArray(data.items)) {
           this.menuItems = data.items;
           return;
         }
       }
     } catch (e) {
-      console.info('Using fallback menu items for admin view');
+      console.warn('Failed to load menu from server:', e);
     }
-    // Fallback to sample items if database menu isn't seeded yet
-    this.menuItems = Menu.sampleItems || [];
+    this.menuItems = [];
+  },
+
+  async loadOrders() {
+    try {
+      let url = `${CONFIG.API_BASE}/admin/orders?`;
+      if (this.activeFilter && this.activeFilter !== 'all') {
+        url += `status=${encodeURIComponent(this.activeFilter)}&`;
+      }
+      if (this.searchQuery && this.searchQuery.trim()) {
+        url += `search=${encodeURIComponent(this.searchQuery.trim())}&`;
+      }
+
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.orders)) {
+          this.orders = data.orders;
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load orders from admin API:', e);
+    }
+    this.orders = [];
+  },
+
+  async fetchDashboardTelemetry() {
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/admin/dashboard`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          this.metrics = data.metrics;
+          return data;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch dashboard telemetry:', e);
+    }
+    return null;
   },
 
   /* ─── Dashboard Tab ──────────────────────────────────────────────── */
-  renderDashboard() {
-    this.loadOrders();
-    const totalOrders = this.orders.length;
-    const revenue = this.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-    const pending = this.orders.filter(o => o.status === 'Placed' || o.status === 'Preparing').length;
-    const completed = this.orders.filter(o => o.status === 'Completed').length;
+  async renderDashboard() {
+    const telemetry = await this.fetchDashboardTelemetry();
+    await this.loadOrders();
+
+    const m = (telemetry && telemetry.metrics) ? telemetry.metrics : {
+      totalOrders: this.orders.length,
+      todayOrdersCount: this.orders.length,
+      grossOrderValue: this.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      totalCollectedRevenue: this.orders.filter(o => o.paymentStatus === 'Paid' && o.status !== 'Cancelled').reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      activeKitchenOrders: this.orders.filter(o => o.status === 'Placed' || o.status === 'Preparing').length,
+      completedOrders: this.orders.filter(o => o.status === 'Completed').length
+    };
 
     const elTotal = document.getElementById('stat-total-orders');
     const elRevenue = document.getElementById('stat-revenue');
     const elPending = document.getElementById('stat-pending');
     const elCompleted = document.getElementById('stat-completed');
 
-    if (elTotal) elTotal.textContent = totalOrders;
-    if (elRevenue) elRevenue.textContent = Utils.formatCurrency(revenue);
-    if (elPending) elPending.textContent = pending;
-    if (elCompleted) elCompleted.textContent = completed;
+    if (elTotal) elTotal.textContent = m.totalOrders;
+    if (elRevenue) elRevenue.textContent = Utils.formatCurrency(m.totalCollectedRevenue);
+    if (elPending) elPending.textContent = m.activeKitchenOrders;
+    if (elCompleted) elCompleted.textContent = m.completedOrders;
 
-    // Recent orders table
+    // Recent orders stream (top 5)
     const tableBody = document.getElementById('recent-orders-tbody');
     if (tableBody) {
       const recent = this.orders.slice(0, 5);
-      tableBody.innerHTML = recent.map(o => `
-        <tr>
-          <td><strong style="color:var(--color-primary);">#${Utils.escapeHTML(o.orderNumber)}</strong></td>
-          <td>${Utils.escapeHTML(o.customerName || 'Student')}</td>
-          <td>${o.items.length} items</td>
-          <td><strong>${Utils.formatCurrency(o.totalAmount)}</strong></td>
-          <td>${this.getStatusBadge(o.status)}</td>
-          <td>${new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-        </tr>
-      `).join('');
+      if (recent.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:1.5rem; color:var(--color-text-muted);">No orders logged yet.</td></tr>`;
+      } else {
+        tableBody.innerHTML = recent.map(o => `
+          <tr>
+            <td><strong style="color:var(--color-primary);">#${Utils.escapeHTML(o.orderNumber)}</strong></td>
+            <td>${Utils.escapeHTML(o.customerName || 'Student')}</td>
+            <td>${(o.items || []).length} items</td>
+            <td><strong>${Utils.formatCurrency(o.totalAmount)}</strong></td>
+            <td>${this.getStatusBadge(o.status)}</td>
+            <td>${new Date(o.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+          </tr>
+        `).join('');
+      }
     }
 
-    this.renderSalesChart();
+    if (telemetry && Array.isArray(telemetry.dailyTrends)) {
+      this.renderSalesChartWithData(telemetry.dailyTrends);
+    } else {
+      this.renderFallbackSalesChart();
+    }
   },
 
   /* ─── Native SVG/CSS Chart ───────────────────────────────────────── */
-  renderSalesChart() {
+  renderSalesChartWithData(dailyTrends) {
     const chartEl = document.getElementById('sales-bar-chart');
     if (!chartEl) return;
 
-    // Daily buckets for last 6 days
-    const days = [
-      { label: 'Mon', val: 3200 },
-      { label: 'Tue', val: 4100 },
-      { label: 'Wed', val: 3850 },
-      { label: 'Thu', val: 5400 },
-      { label: 'Fri', val: 6200 },
-      { label: 'Today', val: 4950 }
-    ];
+    if (!dailyTrends || dailyTrends.length === 0) {
+      chartEl.innerHTML = '<div style="text-align:center; width:100%; color:var(--color-text-muted); padding:2rem;">No sales data available.</div>';
+      return;
+    }
 
-    const max = Math.max(...days.map(d => d.val));
+    const max = Math.max(...dailyTrends.map(d => d.revenue), 100);
 
-    chartEl.innerHTML = days.map(d => {
-      const heightPercent = Math.round((d.val / max) * 100);
+    chartEl.innerHTML = dailyTrends.map(d => {
+      const heightPercent = Math.max(6, Math.round((d.revenue / max) * 100));
       return `
         <div class="bar-group">
-          <div class="bar-value">₹${d.val}</div>
+          <div class="bar-value">₹${Math.round(d.revenue)}</div>
           <div class="bar-fill" style="height: ${heightPercent}%;"></div>
-          <div class="bar-label">${d.label}</div>
+          <div class="bar-label">${Utils.escapeHTML(d.label)}</div>
         </div>
       `;
     }).join('');
   },
 
+  renderFallbackSalesChart() {
+    const chartEl = document.getElementById('sales-bar-chart');
+    if (!chartEl) return;
+    chartEl.innerHTML = `
+      <div class="bar-group">
+        <div class="bar-value">₹0</div>
+        <div class="bar-fill" style="height: 10%;"></div>
+        <div class="bar-label">Today</div>
+      </div>
+    `;
+  },
+
   /* ─── Menu Management ────────────────────────────────────────────── */
-  renderMenuManagement() {
+  async renderMenuManagement() {
+    await this.loadMenu();
     const tbody = document.getElementById('admin-menu-tbody');
     if (!tbody) return;
+
+    if (this.menuItems.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--color-text-muted);">No menu items found. Click "+ Add New Food Item" above.</td></tr>`;
+      return;
+    }
 
     tbody.innerHTML = this.menuItems.map(item => `
       <tr data-id="${item._id}">
@@ -209,11 +210,21 @@ const Admin = {
     `).join('');
   },
 
-  toggleItemAvailability(itemId, isAvailable) {
-    const item = this.menuItems.find(i => String(i._id) === String(itemId));
-    if (item) {
-      item.isAvailable = isAvailable;
-      Utils.showToast(`Updated "${item.name}" availability to ${isAvailable ? 'Available' : 'Sold Out'}.`, 'success');
+  async toggleItemAvailability(itemId, isAvailable) {
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/menu/${itemId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isAvailable })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Utils.showToast(`Updated availability to ${isAvailable ? 'Available' : 'Sold Out'}.`, 'success');
+      } else {
+        Utils.showToast(data.error || 'Failed to update availability', 'error');
+      }
+    } catch (e) {
+      Utils.showToast('Network error while updating availability.', 'error');
     }
   },
 
@@ -236,7 +247,7 @@ const Admin = {
     document.getElementById('item-preptime').value = item.preparationTime || 10;
     document.getElementById('item-desc').value = item.description || '';
     document.getElementById('item-image').value = item.image || '';
-    document.getElementById('item-available').checked = item.isAvailable;
+    document.getElementById('item-available').checked = item.isAvailable !== false;
 
     document.getElementById('item-modal').style.display = 'flex';
   },
@@ -246,7 +257,7 @@ const Admin = {
     if (modal) modal.style.display = 'none';
   },
 
-  saveMenuItem(e) {
+  async saveMenuItem(e) {
     e.preventDefault();
     const id = document.getElementById('modal-item-id').value;
     const name = document.getElementById('item-name').value.trim();
@@ -258,131 +269,226 @@ const Admin = {
     const isAvailable = document.getElementById('item-available').checked;
 
     if (!name || price <= 0) {
-      Utils.showToast('Please enter valid name and price', 'error');
+      Utils.showToast('Please enter valid item name and positive price.', 'error');
       return;
     }
 
-    if (id) {
-      // Edit existing
-      const idx = this.menuItems.findIndex(i => String(i._id) === String(id));
-      if (idx > -1) {
-        this.menuItems[idx] = { ...this.menuItems[idx], name, category, price, preparationTime, description, image, isAvailable };
-        Utils.showToast('Item updated successfully', 'success');
-      }
-    } else {
-      // Add new
-      const newItem = {
-        _id: 'custom-' + Date.now(),
-        name,
-        category,
-        price,
-        preparationTime,
-        description,
-        image,
-        isAvailable,
-        createdAt: new Date().toISOString()
-      };
-      this.menuItems.unshift(newItem);
-      Utils.showToast('New menu item added!', 'success');
-    }
+    const payload = { name, category, price, preparationTime, description, image, isAvailable };
 
-    this.closeModal('item-modal');
-    this.renderMenuManagement();
+    try {
+      const url = id ? `${CONFIG.API_BASE}/menu/${id}` : `${CONFIG.API_BASE}/menu`;
+      const method = id ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Utils.showToast(id ? 'Menu item updated!' : 'New menu item created!', 'success');
+        this.closeModal('item-modal');
+        await this.renderMenuManagement();
+      } else {
+        Utils.showToast(data.error || 'Failed to save menu item.', 'error');
+      }
+    } catch (err) {
+      Utils.showToast('Network error while saving item.', 'error');
+    }
   },
 
-  confirmDelete(itemId) {
+  async confirmDelete(itemId) {
     const item = this.menuItems.find(i => String(i._id) === String(itemId));
     if (!item) return;
 
     if (confirm(`Are you sure you want to delete "${item.name}"?`)) {
-      this.menuItems = this.menuItems.filter(i => String(i._id) !== String(itemId));
-      Utils.showToast(`Deleted "${item.name}" from menu.`, 'info');
-      this.renderMenuManagement();
+      try {
+        const res = await fetch(`${CONFIG.API_BASE}/menu/${itemId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          Utils.showToast(`Deleted "${item.name}" from catalogue.`, 'info');
+          await this.renderMenuManagement();
+        } else {
+          Utils.showToast(data.error || 'Failed to delete item.', 'error');
+        }
+      } catch (e) {
+        Utils.showToast('Network error while deleting item.', 'error');
+      }
     }
   },
 
   /* ─── Order Management ───────────────────────────────────────────── */
-  renderOrdersManagement() {
-    this.loadOrders();
+  async renderOrdersManagement() {
+    await this.loadOrders();
     const tbody = document.getElementById('admin-orders-tbody');
     if (!tbody) return;
 
-    tbody.innerHTML = this.orders.map(order => `
-      <tr data-order-id="${order._id}">
-        <td><strong style="color:var(--color-primary);">#${Utils.escapeHTML(order.orderNumber)}</strong></td>
-        <td>
-          <div style="font-weight:700;">${Utils.escapeHTML(order.customerName || 'Student')}</div>
-          <div style="font-size:0.8rem; color:var(--color-text-muted);">${Utils.escapeHTML(order.customerEmail || '')}</div>
-        </td>
-        <td>
-          <div style="font-size:0.88rem;">
-            ${order.items.map(i => `${i.quantity}x ${Utils.escapeHTML(i.name)}`).join(', ')}
-          </div>
-        </td>
-        <td><strong>${Utils.formatCurrency(order.totalAmount)}</strong></td>
-        <td>
-          <span class="badge ${order.paymentStatus === 'Paid' ? 'badge-success' : 'badge-warning'}">
-            ${order.paymentStatus || 'Pending'}
-          </span>
-        </td>
-        <td>
-          <select class="form-control" style="padding:0.35rem 0.6rem; font-size:0.85rem;" onchange="Admin.updateOrderStatus('${order._id}', this.value)">
-            <option value="Placed" ${order.status === 'Placed' ? 'selected' : ''}>Placed</option>
-            <option value="Preparing" ${order.status === 'Preparing' ? 'selected' : ''}>Preparing</option>
-            <option value="Ready" ${order.status === 'Ready' ? 'selected' : ''}>Ready</option>
-            <option value="Completed" ${order.status === 'Completed' ? 'selected' : ''}>Completed</option>
-          </select>
-        </td>
-        <td>${new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-      </tr>
-    `).join('');
+    if (this.orders.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align:center; padding:3rem; color:var(--color-text-muted);">
+            No orders match the current filter criteria.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = this.orders.map(order => {
+      const isTerminal = order.status === 'Completed' || order.status === 'Cancelled';
+      const isPaid = order.paymentStatus === 'Paid';
+
+      return `
+        <tr data-order-id="${order._id}">
+          <td>
+            <strong style="color:var(--color-primary); font-size:1.05rem;">#${Utils.escapeHTML(order.orderNumber)}</strong>
+            <div style="font-size:0.75rem; color:var(--color-text-muted);">${new Date(order.createdAt).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+          </td>
+          <td>
+            <div style="font-weight:700;">${Utils.escapeHTML(order.customerName || 'Student')}</div>
+            <div style="font-size:0.8rem; color:var(--color-text-muted);">${Utils.escapeHTML(order.customerEmail || '')}</div>
+          </td>
+          <td>
+            <div style="font-size:0.88rem; max-width:240px;">
+              ${(order.items || []).map(i => `<span style="display:inline-block; margin-right:0.4rem;"><strong>${i.quantity}x</strong> ${Utils.escapeHTML(i.name)}</span>`).join(', ')}
+            </div>
+            ${order.notes ? `<div style="font-size:0.78rem; color:#b45309; margin-top:0.25rem;">📝 ${Utils.escapeHTML(order.notes)}</div>` : ''}
+          </td>
+          <td>
+            <strong style="font-size:1.05rem;">${Utils.formatCurrency(order.totalAmount)}</strong>
+            <div style="font-size:0.78rem; color:var(--color-text-muted);">${Utils.escapeHTML(order.paymentMethod || 'Cash at Counter')}</div>
+          </td>
+          <td>
+            <div style="display:flex; align-items:center; gap:0.4rem;">
+              <span class="badge ${isPaid ? 'badge-success' : 'badge-warning'}">
+                ${order.paymentStatus || 'Pending'}
+              </span>
+              ${!isPaid && order.status !== 'Cancelled' ? `
+                <button class="btn btn-secondary btn-sm" style="font-size:0.7rem; padding:0.15rem 0.4rem;" onclick="Admin.markOrderPaid('${order._id}', '${order.orderNumber}')" title="Confirm Payment Received">
+                  Mark Paid
+                </button>
+              ` : ''}
+            </div>
+          </td>
+          <td>
+            ${isTerminal ? `
+              ${this.getStatusBadge(order.status)}
+            ` : `
+              <select class="form-control" style="padding:0.35rem 0.6rem; font-size:0.85rem; font-weight:600;" onchange="Admin.updateOrderStatus('${order._id}', this.value, '${order.orderNumber}')">
+                <option value="Placed" ${order.status === 'Placed' ? 'selected' : ''}>1. Placed</option>
+                <option value="Preparing" ${order.status === 'Preparing' ? 'selected' : ''}>2. Preparing</option>
+                <option value="Ready" ${order.status === 'Ready' ? 'selected' : ''}>3. Ready for Pickup</option>
+                <option value="Completed" ${order.status === 'Completed' ? 'selected' : ''}>4. Completed</option>
+                <option value="Cancelled">✕ Cancel Order</option>
+              </select>
+            `}
+          </td>
+          <td>
+            <span style="font-size:0.85rem; color:var(--color-text-muted);">
+              ⏱️ ${order.estimatedPreparationTime || 12}m
+            </span>
+          </td>
+        </tr>
+      `;
+    }).join('');
   },
 
-  updateOrderStatus(orderId, newStatus) {
-    const order = this.orders.find(o => o._id === orderId);
-    if (order) {
-      order.status = newStatus;
-      if (newStatus === 'Completed') {
-        order.paymentStatus = 'Paid';
+  async updateOrderStatus(orderId, newStatus, orderNumber) {
+    if (!newStatus) return;
+
+    if (newStatus === 'Cancelled' && !confirm(`Are you sure you want to cancel order #${orderNumber}?`)) {
+      await this.renderOrdersManagement();
+      return;
+    }
+
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/admin/orders/${orderId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Utils.showToast(`Order #${orderNumber} transitioned to "${newStatus}".`, 'success');
+        await this.renderOrdersManagement();
+      } else {
+        Utils.showToast(data.error || 'Failed to update status.', 'error');
+        await this.renderOrdersManagement(); // Reset dropdown
       }
-      // Update in storage if local
-      const stored = Utils.getStorage(CONFIG.STORAGE_KEYS.ORDER_HISTORY, []);
-      const storedMatch = stored.find(o => o._id === orderId);
-      if (storedMatch) {
-        storedMatch.status = newStatus;
-        Utils.setStorage(CONFIG.STORAGE_KEYS.ORDER_HISTORY, stored);
+    } catch (e) {
+      Utils.showToast('Network error while updating status.', 'error');
+      await this.renderOrdersManagement();
+    }
+  },
+
+  async markOrderPaid(orderId, orderNumber) {
+    if (!confirm(`Confirm that payment for order #${orderNumber} was collected at the counter?`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/admin/orders/${orderId}/payment`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentStatus: 'Paid' })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        Utils.showToast(`Order #${orderNumber} payment marked as Paid!`, 'success');
+        await this.renderOrdersManagement();
+      } else {
+        Utils.showToast(data.error || 'Failed to update payment.', 'error');
       }
-      Utils.showToast(`Order #${order.orderNumber} status updated to ${newStatus}.`, 'success');
-      this.renderOrdersManagement();
+    } catch (e) {
+      Utils.showToast('Network error while marking payment.', 'error');
     }
   },
 
   /* ─── Analytics Tab ──────────────────────────────────────────────── */
-  renderAnalytics() {
-    this.loadOrders();
-    const revenue = this.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-    const totalCount = this.orders.length;
+  async renderAnalytics() {
+    const telemetry = await this.fetchDashboardTelemetry();
+    await this.loadOrders();
+
+    const m = (telemetry && telemetry.metrics) ? telemetry.metrics : {
+      totalOrders: this.orders.length,
+      grossOrderValue: this.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      totalCollectedRevenue: this.orders.filter(o => o.paymentStatus === 'Paid' && o.status !== 'Cancelled').reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      activeKitchenOrders: this.orders.filter(o => o.status === 'Placed' || o.status === 'Preparing').length
+    };
 
     const revEl = document.getElementById('analytics-revenue');
     const ordEl = document.getElementById('analytics-orders');
     const aovEl = document.getElementById('analytics-aov');
 
-    if (revEl) revEl.textContent = Utils.formatCurrency(revenue);
-    if (ordEl) ordEl.textContent = totalCount;
-    if (aovEl) aovEl.textContent = Utils.formatCurrency(totalCount > 0 ? revenue / totalCount : 0);
+    if (revEl) revEl.textContent = Utils.formatCurrency(m.totalCollectedRevenue);
+    if (ordEl) ordEl.textContent = m.totalOrders;
+    if (aovEl) {
+      const settledCount = this.orders.filter(o => o.paymentStatus === 'Paid' && o.status !== 'Cancelled').length;
+      aovEl.textContent = Utils.formatCurrency(settledCount > 0 ? m.totalCollectedRevenue / settledCount : 0);
+    }
 
-    // Render Status Distribution SVG Pie / Bar
-    const statusCounts = {
+    // Render Status Distribution Bars
+    const dist = (telemetry && telemetry.statusDistribution) ? telemetry.statusDistribution : {
       Placed: this.orders.filter(o => o.status === 'Placed').length,
       Preparing: this.orders.filter(o => o.status === 'Preparing').length,
       Ready: this.orders.filter(o => o.status === 'Ready').length,
-      Completed: this.orders.filter(o => o.status === 'Completed').length
+      Completed: this.orders.filter(o => o.status === 'Completed').length,
+      Cancelled: this.orders.filter(o => o.status === 'Cancelled').length
     };
 
+    const totalCount = Object.values(dist).reduce((a, b) => a + b, 0);
     const statusContainer = document.getElementById('status-distribution-bars');
     if (statusContainer) {
-      statusContainer.innerHTML = Object.entries(statusCounts).map(([status, count]) => {
+      statusContainer.innerHTML = Object.entries(dist).map(([status, count]) => {
         const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
+        let color = 'var(--color-primary)';
+        if (status === 'Cancelled') color = 'var(--color-danger)';
+        if (status === 'Completed') color = 'var(--color-success)';
+        if (status === 'Preparing') color = 'var(--color-warning)';
+
         return `
           <div style="margin-bottom:1rem;">
             <div style="display:flex; justify-content:space-between; font-size:0.9rem; margin-bottom:0.35rem;">
@@ -390,14 +496,37 @@ const Admin = {
               <span>${pct}%</span>
             </div>
             <div style="height:10px; background:var(--color-surface-alt); border-radius:var(--radius-full); overflow:hidden;">
-              <div style="height:100%; width:${pct}%; background:var(--color-primary); border-radius:var(--radius-full);"></div>
+              <div style="height:100%; width:${pct}%; background:${color}; border-radius:var(--radius-full);"></div>
             </div>
           </div>
         `;
       }).join('');
     }
 
-    this.renderSalesChart();
+    // Top Selling Products
+    const popContainer = document.getElementById('popular-products-tbody');
+    if (popContainer) {
+      const popItems = (telemetry && Array.isArray(telemetry.popularProducts)) ? telemetry.popularProducts : [];
+      if (popItems.length === 0) {
+        popContainer.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:1.5rem; color:var(--color-text-muted);">No sales records logged yet.</td></tr>`;
+      } else {
+        popContainer.innerHTML = popItems.map((p, idx) => `
+          <tr>
+            <td><strong>#${idx + 1}</strong></td>
+            <td><strong>${Utils.escapeHTML(p.name)}</strong></td>
+            <td><span class="badge badge-info">${Utils.escapeHTML(p.category || 'Food')}</span></td>
+            <td>${Utils.formatCurrency(p.price)}</td>
+            <td><strong>${p.unitsSold} units</strong></td>
+            <td>${p.orderFrequency} orders</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    // Daily Sales Chart
+    if (telemetry && Array.isArray(telemetry.dailyTrends)) {
+      this.renderSalesChartWithData(telemetry.dailyTrends);
+    }
   },
 
   getStatusBadge(status) {
@@ -406,6 +535,7 @@ const Admin = {
       case 'Preparing': return '<span class="badge badge-warning">Preparing</span>';
       case 'Ready': return '<span class="badge badge-success">Ready</span>';
       case 'Completed': return '<span class="badge badge-success">Completed</span>';
+      case 'Cancelled': return '<span class="badge badge-danger">Cancelled</span>';
       default: return `<span class="badge badge-info">${Utils.escapeHTML(status)}</span>`;
     }
   }

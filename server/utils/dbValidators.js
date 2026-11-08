@@ -4,10 +4,18 @@
  * CampusBite — Schema & Input Validators
  */
 
+const {
+  ORDER_STATUS,
+  PAYMENT_STATUS,
+  PAYMENT_METHODS,
+  FINANCIAL_CONFIG
+} = require('../config/constants');
+
 const VALID_ROLES = ['student', 'admin'];
 const VALID_CATEGORIES = ['Burgers', 'Pizza', 'Snacks', 'Indian Food', 'Beverages', 'Desserts'];
-const VALID_ORDER_STATUSES = ['Placed', 'Preparing', 'Ready', 'Completed'];
-const VALID_PAYMENT_STATUSES = ['Pending', 'Paid', 'Failed'];
+const VALID_ORDER_STATUSES = Object.values(ORDER_STATUS);
+const VALID_PAYMENT_STATUSES = Object.values(PAYMENT_STATUS);
+const VALID_PAYMENT_METHODS = Object.values(PAYMENT_METHODS);
 
 function validateEmail(email) {
   if (typeof email !== 'string') return false;
@@ -72,6 +80,9 @@ function validateOrderDocument(doc) {
       if (!item.name || typeof item.price !== 'number' || !item.quantity || item.quantity < 1) {
         errors.push(`Invalid order item at index ${idx}.`);
       }
+      if (item.quantity > FINANCIAL_CONFIG.MAX_QTY_PER_ITEM) {
+        errors.push(`Item quantity at index ${idx} exceeds maximum allowed (${FINANCIAL_CONFIG.MAX_QTY_PER_ITEM}).`);
+      }
     });
   }
   if (typeof doc.totalAmount !== 'number' || doc.totalAmount <= 0) {
@@ -83,6 +94,9 @@ function validateOrderDocument(doc) {
   if (doc.paymentStatus && !VALID_PAYMENT_STATUSES.includes(doc.paymentStatus)) {
     errors.push(`Payment status must be one of: ${VALID_PAYMENT_STATUSES.join(', ')}.`);
   }
+  if (doc.paymentMethod && !VALID_PAYMENT_METHODS.includes(doc.paymentMethod)) {
+    errors.push(`Payment method must be one of: ${VALID_PAYMENT_METHODS.join(', ')}.`);
+  }
   return { isValid: errors.length === 0, errors };
 }
 
@@ -91,6 +105,7 @@ module.exports = {
   VALID_CATEGORIES,
   VALID_ORDER_STATUSES,
   VALID_PAYMENT_STATUSES,
+  VALID_PAYMENT_METHODS,
   validateEmail,
   normalizeEmail,
   validateUserDocument,

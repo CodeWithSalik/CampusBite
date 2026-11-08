@@ -118,51 +118,12 @@
                 <th>Item Name</th>
                 <th>Category</th>
                 <th>Unit Price</th>
-                <th>Daily Units Sold</th>
-                <th>Popularity Indicator</th>
+                <th>Units Sold</th>
+                <th>Order Frequency</th>
               </tr>
             </thead>
-            <tbody>
-              <tr>
-                <td><strong>#1</strong></td>
-                <td><strong>Paneer Makhani Burger</strong></td>
-                <td><span class="badge badge-info">Burgers</span></td>
-                <td>₹129.00</td>
-                <td>142 units</td>
-                <td><span class="badge badge-success">🔥 High Demand</span></td>
-              </tr>
-              <tr>
-                <td><strong>#2</strong></td>
-                <td><strong>Thick Cold Coffee with Ice Cream</strong></td>
-                <td><span class="badge badge-info">Beverages</span></td>
-                <td>₹85.00</td>
-                <td>118 units</td>
-                <td><span class="badge badge-success">🔥 High Demand</span></td>
-              </tr>
-              <tr>
-                <td><strong>#3</strong></td>
-                <td><strong>Crispy Peri-Peri Fries</strong></td>
-                <td><span class="badge badge-info">Snacks</span></td>
-                <td>₹79.00</td>
-                <td>96 units</td>
-                <td><span class="badge badge-success">Top Snack</span></td>
-              </tr>
-              <tr>
-                <td><strong>#4</strong></td>
-                <td><strong>Farmhouse Special Pizza (7")</strong></td>
-                <td><span class="badge badge-info">Pizza</span></td>
-                <td>₹189.00</td>
-                <td>74 units</td>
-                <td><span class="badge badge-info">Popular</span></td>
-              </tr>
-              <tr>
-                <td><strong>#5</strong></td>
-                <td><strong>Chole Bhature Platter</strong></td>
-                <td><span class="badge badge-info">Indian Food</span></td>
-                <td>₹140.00</td>
-                <td>68 units</td>
-                <td><span class="badge badge-info">Lunch Favorite</span></td>
-              </tr>
+            <tbody id="popular-products-tbody">
+              <!-- Dynamically populated from MongoDB order history -->
             </tbody>
           </table>
         </div>

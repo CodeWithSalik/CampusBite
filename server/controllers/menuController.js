@@ -11,15 +11,6 @@ const menuController = {
     try {
       const { category, availableOnly } = req.query;
 
-      // If database is not connected, return empty list or let client use fallback
-      if (!isConnected()) {
-        return res.json({
-          success: true,
-          items: [],
-          source: 'offline-fallback'
-        });
-      }
-
       const items = await menuService.getAllItems({
         category,
         availableOnly: availableOnly === 'true'
