@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics & Insights — CampusBite Admin</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+</head>
+<body class="admin-body">
+
+  <!-- Sidebar -->
+  <aside class="admin-sidebar" id="admin-sidebar">
+    <div class="sidebar-header">
+      <div class="brand-icon">CB</div>
+      <div>
+        <div style="font-weight:800; font-size:1.15rem; line-height:1;">Campus<span class="brand-accent">Bite</span></div>
+        <span class="admin-badge">Admin Portal</span>
+      </div>
+    </div>
+
+    <ul class="sidebar-menu">
+      <li>
+        <a href="/admin.html" class="sidebar-link">
+          <span>📊</span>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-orders.html" class="sidebar-link">
+          <span>📋</span>
+          <span>Order Queue</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-menu.html" class="sidebar-link">
+          <span>🍔</span>
+          <span>Menu Manager</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-analytics.html" class="sidebar-link active">
+          <span>📈</span>
+          <span>Analytics</span>
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <a href="/index.html" class="btn btn-secondary btn-sm btn-full" style="margin-bottom:0.5rem;">← Student View</a>
+      <button onclick="Auth.logout()" class="btn btn-outline btn-sm btn-full" style="color:var(--color-danger); border-color:var(--color-danger);">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="admin-main">
+    <header class="admin-topbar">
+      <div style="display:flex; align-items:center; gap:1rem;">
+        <h2 style="font-size:1.35rem;">Operational Analytics & Reporting</h2>
+      </div>
+
+      <div style="font-size:0.85rem; color:var(--color-text-muted);">
+        Academic Year 2026-27 • Semester Review
+      </div>
+    </header>
+
+    <main class="admin-content">
+      <!-- Summary metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <span class="metric-title">Aggregated Revenue</span>
+          <div class="metric-value" id="analytics-revenue" style="color:var(--color-primary);">₹0.00</div>
+          <span class="metric-trend text-primary">↑ Canteen sales performance</span>
+        </div>
+
+        <div class="metric-card">
+          <span class="metric-title">Total Orders Logged</span>
+          <div class="metric-value" id="analytics-orders">0</div>
+          <span class="metric-trend text-muted">Across all operational shifts</span>
+        </div>
+
+        <div class="metric-card">
+          <span class="metric-title">Avg Order Value (AOV)</span>
+          <div class="metric-value" id="analytics-aov">₹0.00</div>
+          <span class="metric-trend text-muted">Per student transaction</span>
+        </div>
+      </div>
+
+      <!-- Charts Grid -->
+      <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:1.5rem; margin-bottom:2rem;">
+        <!-- Weekly Trajectory -->
+        <div class="chart-container">
+          <h3 style="font-size:1.15rem; margin-bottom:0.35rem;">Daily Revenue Trajectory</h3>
+          <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:1rem;">Pure CSS & SVG rendered bar heights without external libraries.</p>
+          <div id="sales-bar-chart" class="bar-chart"></div>
+        </div>
+
+        <!-- Status Distribution -->
+        <div class="card">
+          <h3 style="font-size:1.15rem; margin-bottom:0.35rem;">Workflow Distribution</h3>
+          <p style="font-size:0.85rem; color:var(--color-text-muted); margin-bottom:1.5rem;">Orders broken down by current kitchen lifecycle status.</p>
+          <div id="status-distribution-bars">
+            <!-- Injected via admin.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Popular Campus Items Table -->
+      <div class="card" style="padding:0; overflow:hidden;">
+        <div style="padding:1.25rem 1.5rem; border-bottom:1px solid var(--color-border);">
+          <h3 style="font-size:1.15rem;">Top Selling Campus Food Items</h3>
+        </div>
+        <div class="table-responsive" style="border:none; box-shadow:none; border-radius:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Item Name</th>
+                <th>Category</th>
+                <th>Unit Price</th>
+                <th>Daily Units Sold</th>
+                <th>Popularity Indicator</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>#1</strong></td>
+                <td><strong>Paneer Makhani Burger</strong></td>
+                <td><span class="badge badge-info">Burgers</span></td>
+                <td>₹129.00</td>
+                <td>142 units</td>
+                <td><span class="badge badge-success">🔥 High Demand</span></td>
+              </tr>
+              <tr>
+                <td><strong>#2</strong></td>
+                <td><strong>Thick Cold Coffee with Ice Cream</strong></td>
+                <td><span class="badge badge-info">Beverages</span></td>
+                <td>₹85.00</td>
+                <td>118 units</td>
+                <td><span class="badge badge-success">🔥 High Demand</span></td>
+              </tr>
+              <tr>
+                <td><strong>#3</strong></td>
+                <td><strong>Crispy Peri-Peri Fries</strong></td>
+                <td><span class="badge badge-info">Snacks</span></td>
+                <td>₹79.00</td>
+                <td>96 units</td>
+                <td><span class="badge badge-success">Top Snack</span></td>
+              </tr>
+              <tr>
+                <td><strong>#4</strong></td>
+                <td><strong>Farmhouse Special Pizza (7")</strong></td>
+                <td><span class="badge badge-info">Pizza</span></td>
+                <td>₹189.00</td>
+                <td>74 units</td>
+                <td><span class="badge badge-info">Popular</span></td>
+              </tr>
+              <tr>
+                <td><strong>#5</strong></td>
+                <td><strong>Chole Bhature Platter</strong></td>
+                <td><span class="badge badge-info">Indian Food</span></td>
+                <td>₹140.00</td>
+                <td>68 units</td>
+                <td><span class="badge badge-info">Lunch Favorite</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      Admin.init();
+      Admin.renderAnalytics();
+    });
+  </script>
+</body>
+</html>

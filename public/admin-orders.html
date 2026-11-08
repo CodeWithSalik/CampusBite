@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Order Queue — CampusBite Admin</title>
+  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+</head>
+<body class="admin-body">
+
+  <!-- Sidebar -->
+  <aside class="admin-sidebar" id="admin-sidebar">
+    <div class="sidebar-header">
+      <div class="brand-icon">CB</div>
+      <div>
+        <div style="font-weight:800; font-size:1.15rem; line-height:1;">Campus<span class="brand-accent">Bite</span></div>
+        <span class="admin-badge">Admin Portal</span>
+      </div>
+    </div>
+
+    <ul class="sidebar-menu">
+      <li>
+        <a href="/admin.html" class="sidebar-link">
+          <span>📊</span>
+          <span>Dashboard</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-orders.html" class="sidebar-link active">
+          <span>📋</span>
+          <span>Order Queue</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-menu.html" class="sidebar-link">
+          <span>🍔</span>
+          <span>Menu Manager</span>
+        </a>
+      </li>
+      <li>
+        <a href="/admin-analytics.html" class="sidebar-link">
+          <span>📈</span>
+          <span>Analytics</span>
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <a href="/index.html" class="btn btn-secondary btn-sm btn-full" style="margin-bottom:0.5rem;">← Student View</a>
+      <button onclick="Auth.logout()" class="btn btn-outline btn-sm btn-full" style="color:var(--color-danger); border-color:var(--color-danger);">Sign Out</button>
+    </div>
+  </aside>
+
+  <!-- Main Content Area -->
+  <div class="admin-main">
+    <header class="admin-topbar">
+      <div style="display:flex; align-items:center; gap:1rem;">
+        <h2 style="font-size:1.35rem;">Live Kitchen Order Queue</h2>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:1rem;">
+        <button class="btn btn-secondary btn-sm" onclick="Admin.renderOrdersManagement()">
+          🔄 Refresh Stream
+        </button>
+      </div>
+    </header>
+
+    <main class="admin-content">
+      <div class="demo-banner">
+        <span>⚡</span>
+        <span><strong>Real-time Kitchen Display:</strong> Updates made to order status immediately propagate to the student order tracking timeline.</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Order Token</th>
+              <th>Customer</th>
+              <th>Ordered Items</th>
+              <th>Total Amount</th>
+              <th>Payment</th>
+              <th>Workflow Status</th>
+              <th>Order Time</th>
+            </tr>
+          </thead>
+          <tbody id="admin-orders-tbody">
+            <!-- Dynamic orders list injected via admin.js -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <script src="/js/config.js"></script>
+  <script src="/js/utils.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/admin.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      Admin.init();
+      Admin.renderOrdersManagement();
+    });
+  </script>
+</body>
+</html>
