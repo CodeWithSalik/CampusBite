@@ -2,7 +2,7 @@
 
 A comprehensive web-based smart canteen ordering platform built for the university CSE326 academic project.
 
-CampusBite allows students to browse fresh canteen menus, customize carts, place queue-free food orders, and track live kitchen preparation statuses. A separate, password-protected administrator interface provides canteen staff with live order queue management, item catalog controls, and sales telemetry.
+CampusBite allows students to browse fresh canteen menus, customize carts, place queue-free food orders, and track live kitchen preparation statuses with periodic polling. A separate, password-protected administrator interface provides canteen staff with live order queue management, item catalog controls, and sales telemetry.
 
 ---
 
@@ -12,9 +12,9 @@ CampusBite allows students to browse fresh canteen menus, customize carts, place
 |---|---|
 | **Frontend** | Pure HTML5, CSS3, Vanilla JavaScript ES6+ (Strictly framework-free) |
 | **Backend** | Node.js, Express.js (CommonJS, `'use strict';`) |
-| **Database** | MongoDB Atlas with Official MongoDB Node.js Driver |
+| **Database** | MongoDB Atlas with Official MongoDB Node.js Driver (No Mongoose) |
 | **Sessions** | `express-session`, `connect-mongo` (with in-memory dev fallback) |
-| **Security** | `helmet` (CSP, HSTS, nosniff), `bcryptjs`, `express-rate-limit` |
+| **Security** | `helmet` (CSP, HSTS, nosniff), `bcryptjs`, `express-rate-limit`, Idempotency Keys |
 
 > **Strict Academic Rule Compliance:** Absolutely zero frontend frameworks or build tools (No React, Vue, Angular, Tailwind, Bootstrap, jQuery, TypeScript, or Mongoose).
 
@@ -35,9 +35,9 @@ CampusBite/
 │   │   ├── auth.js             # Session checking & navbar state
 │   │   ├── menu.js             # Catalogue, search, category filter
 │   │   ├── cart.js             # LocalStorage cart management
-│   │   ├── checkout.js         # Order summary & Cash at Counter
-│   │   ├── orders.js           # Order history
-│   │   ├── tracking.js         # 4-stage kitchen order tracking
+│   │   ├── checkout.js         # Order summary & Cash/UPI at Counter
+│   │   ├── orders.js           # Order history & student cancellation
+│   │   ├── tracking.js         # 4-stage kitchen order tracking & polling
 │   │   └── admin.js            # Admin metrics, orders, menu CRUD
 │   ├── index.html              # Student home page & hero
 │   ├── menu.html               # Full food catalogue
@@ -53,30 +53,38 @@ CampusBite/
 │   └── admin-analytics.html    # Sales & order distribution analytics
 ├── server/                     # Backend application code
 │   ├── config/
-│   │   └── database.js         # Official MongoDB connection manager
+│   │   ├── constants.js        # Order/Payment statuses & transitions
+│   │   ├── database.js         # Official MongoDB connection manager
+│   │   └── mockStore.js        # In-memory repository fallback
 │   ├── controllers/
+│   │   ├── adminController.js  # Admin order & telemetry controller
 │   │   ├── authController.js   # Thin auth route controller
-│   │   └── menuController.js   # Menu CRUD controller
+│   │   ├── menuController.js   # Menu CRUD controller
+│   │   └── orderController.js  # Student order & cancellation controller
 │   ├── middleware/
 │   │   ├── auth.js             # requireAuth, requireAdmin, protectAdminPages
 │   │   ├── errorHandler.js     # Centralized error handler
 │   │   └── notFound.js         # 404 handler for API routes
 │   ├── routes/
+│   │   ├── admin.js            # /api/admin routes
 │   │   ├── auth.js             # /api/auth routes
 │   │   ├── health.js           # /api/health route
-│   │   └── menu.js             # /api/menu routes
+│   │   ├── menu.js             # /api/menu routes
+│   │   └── orders.js           # /api/orders routes
 │   ├── services/
 │   │   ├── authService.js      # Password hashing & verification
-│   │   ├── userService.js      # User collection queries
 │   │   ├── menuService.js      # Menu collection queries
-│   │   └── orderService.js     # Order collection queries
+│   │   ├── orderService.js     # Order placement, transitions & analytics
+│   │   └── userService.js      # User collection queries
 │   └── utils/
-│       └── dbValidators.js     # Schema & document validators
+│       ├── dbValidators.js     # Schema & document validators
+│       └── prepTimeEstimator.js# Smart preparation-time formula
 ├── scripts/
+│   ├── e2e-workflows-test.js   # End-to-end 8 user journeys test suite
 │   ├── init-db.js              # Idempotent index creation script
 │   ├── seed-menu.js            # Non-duplicating menu seed script
 │   ├── setup-admin.js          # Secure admin account setup
-│   └── test-suite.js           # Automated QA & regression test suite
+│   └── test-suite.js           # Automated QA & regression test suite (41 checks)
 ├── server.js                   # Application entry point
 ├── .env.example                # Environment variables template
 ├── .gitignore                  # Git ignore rules
@@ -87,105 +95,68 @@ CampusBite/
 
 ---
 
-## Getting Started
+## Smart Preparation Time Estimation Algorithm
 
-### 1. Prerequisites
-- Node.js v18 or higher (tested on Node.js v24)
-- npm v9 or higher
+Implemented in `server/utils/prepTimeEstimator.js`:
 
-### 2. Installation
+$$\text{Estimated Prep Time (mins)} = \max(\text{item prep times}) + \min((\text{totalQuantity} - 1) \times 1.5, 8) + \min(\text{activeQueueOrders} \times 2.5, 25)$$
+
+- **Base Item Time**: Longest single preparation time among all ordered dishes (dishes cook concurrently).
+- **Batch Overhead**: 1.5 minutes per additional portion (capped at 8 mins).
+- **Kitchen Workload Queue**: 2.5 minutes per active order ahead in queue (`Placed` or `Preparing`, capped at 25 mins).
+- **Boundary Clamping**: Bounded realistically between `[5 mins, 45 mins]`.
+
+---
+
+## Order State Machine
+
+Allowed Lifecycle Transitions:
+- `Placed` ➔ `Preparing` or `Cancelled` (Students can cancel ONLY while in `Placed` status)
+- `Preparing` ➔ `Ready`
+- `Ready` ➔ `Completed` (Auto-marks payment as `Paid` for counter collection)
+- `Completed` / `Cancelled`: Terminal states (Cannot be reopened)
+
+---
+
+## Running the Application & Tests
+
 ```bash
-# Clone the repository
-git clone <repo-url>
-cd CampusBite
-
-# Install dependencies
+# 1. Install dependencies
 npm install
-```
 
-### 3. Environment Configuration
-Copy `.env.example` to `.env`:
-```bash
-cp .env.example .env
-```
-Populate `.env` with your settings:
-```env
-PORT=5000
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net
-DB_NAME=campusbite
-SESSION_SECRET=your_secure_session_secret_here
-NODE_ENV=development
+# 2. Run Comprehensive QA Test Suite (41 tests)
+npm test
 
-# Admin Account Setup
-ADMIN_NAME="Campus Administrator"
-ADMIN_EMAIL=admin@campusbite.edu
-ADMIN_PASSWORD=YourSecurePassword123!
-```
+# 3. Run End-to-End User Workflows (8 user journeys)
+npm run test:e2e
 
----
-
-## Database Commands
-
-When connected to MongoDB Atlas:
-
-```bash
-# Initialize indexes and check collections (non-destructive)
-npm run db:init
-
-# Seed realistic campus menu items in Indian Rupees (₹)
-npm run db:seed
-
-# Create an administrator account securely (reads from .env)
-npm run db:setup-admin
-```
-
----
-
-## Running the Application
-
-```bash
-# Production mode
-npm start
-
-# Development mode (with nodemon auto-restart)
+# 4. Start Development Server
 npm run dev
 
-# Run automated QA test suite (39 automated checks)
-npm test
+# 5. Start Production Server
+npm start
 ```
 
-The application runs at **http://localhost:5000**.
+Access the application in any browser at: **`http://localhost:5000`**
 
 ---
 
-## Key Pages & Endpoints
+## REST API Reference
 
-### Student Portal
-- **Home**: `http://localhost:5000/index.html`
-- **Menu Catalogue**: `http://localhost:5000/menu.html`
-- **Cart**: `http://localhost:5000/cart.html`
-- **Checkout**: `http://localhost:5000/checkout.html`
-- **My Orders**: `http://localhost:5000/orders.html`
-- **Order Tracking**: `http://localhost:5000/tracking.html`
-- **Login**: `http://localhost:5000/login.html`
-- **Register**: `http://localhost:5000/register.html`
+### Student Endpoints
+- `POST /api/orders` — Place order (Server-side price calculation, 5% GST, ₹10 fee, idempotency key support)
+- `GET /api/orders/my` — Get logged-in student's order history
+- `GET /api/orders/number/:orderNumber` — Live tracking endpoint with ownership authorization check
+- `GET /api/orders/:id` — Order details
+- `POST /api/orders/:id/cancel` — Cancel order (Allowed only if status is `Placed`)
 
-### Admin Portal (Protected)
-- **Dashboard**: `http://localhost:5000/admin.html`
-- **Order Queue**: `http://localhost:5000/admin-orders.html`
-- **Menu Manager**: `http://localhost:5000/admin-menu.html`
-- **Analytics**: `http://localhost:5000/admin-analytics.html`
-
-### Primary REST APIs
-- `GET /api/health` — Service health-check
-- `POST /api/auth/register` — Student registration (always assigns `role: 'student'`)
-- `POST /api/auth/login` — Session login with rate limiting
-- `POST /api/auth/logout` — Session termination
-- `GET /api/auth/me` — Current authenticated user profile
-- `GET /api/menu` — Food catalogue retrieval
-- `POST /api/menu` — Admin food item creation
-- `PUT /api/menu/:id` — Admin food item update
-- `DELETE /api/menu/:id` — Admin food item deletion
+### Admin Endpoints (Require Admin Session)
+- `GET /api/admin/orders` — Filterable order stream (`status`, `search`, `dateFrom`, `dateTo`)
+- `GET /api/admin/orders/:id` — Full order details
+- `PATCH /api/admin/orders/:id/status` — State machine validated status transitions
+- `PATCH /api/admin/orders/:id/payment` — Counter payment settlement (`Paid`, `Pending`)
+- `GET /api/admin/dashboard` — Live KPI counters, collected revenue, and smart workload
+- `GET /api/admin/analytics` — 7-day revenue trajectory and popular products aggregation
 
 ---
 
